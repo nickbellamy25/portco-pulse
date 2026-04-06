@@ -68,7 +68,7 @@ export function PersistentChatPanel({
     <div
       className="shrink-0 h-full border-l border-border flex flex-col overflow-hidden transition-[width] duration-300 ease-in-out"
       style={{
-        width: chatOpen ? "320px" : "2.25rem",
+        width: chatOpen ? "384px" : "2.25rem",
       }}
     >
       {/* Closed state — vertical clickable tab */}
@@ -456,7 +456,6 @@ function PortfolioQAPane() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isLoading}
-            placeholder="Ask about your portfolio…"
             rows={2}
             className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />

@@ -184,6 +184,7 @@ function ChatPanelExpanded({
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
+          <MessageSquare className="h-3.5 w-3.5 text-green-600 shrink-0" />
           <span className="text-[13px] font-medium text-muted-foreground shrink-0">Pulse AI</span>
           {badge}
         </div>
@@ -456,6 +457,7 @@ function PortfolioQAPane() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isLoading}
+            placeholder="Message..."
             rows={2}
             className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />

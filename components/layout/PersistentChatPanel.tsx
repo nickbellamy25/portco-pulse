@@ -68,8 +68,7 @@ export function PersistentChatPanel({
     <div
       className="shrink-0 h-full border-l border-border flex flex-col overflow-hidden transition-[width] duration-300 ease-in-out"
       style={{
-        width: chatOpen ? "38vw" : "2.25rem",
-        minWidth: chatOpen ? "300px" : undefined,
+        width: chatOpen ? "320px" : "2.25rem",
       }}
     >
       {/* Closed state — vertical clickable tab */}
@@ -77,13 +76,16 @@ export function PersistentChatPanel({
         <button
           type="button"
           onClick={toggleChat}
-          className="flex flex-col items-center justify-center h-full w-full bg-gray-50 border-r border-gray-200 gap-2 hover:bg-gray-100 transition-colors"
+          className="flex flex-col items-center justify-center h-full w-full transition-colors"
+          style={{ backgroundColor: "white", borderRight: "1px solid #e0e0e0" }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f5f5f5")}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
           aria-label="Open chat panel"
         >
           <MessageSquare className="h-4 w-4 text-green-600" />
           <span
-            className="text-xs font-medium tracking-widest text-green-600"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+            className="text-xs font-medium tracking-widest"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", color: "black" }}
           >
             Ask AI
           </span>
@@ -378,12 +380,7 @@ function PortfolioQAPane() {
     <div className="flex flex-col flex-1 min-h-0">
       {/* Message list */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-        {messages.length === 0 && (
-          <p className="text-xs text-muted-foreground/70 text-center py-4">
-            Ask a question about your portfolio.
-          </p>
-        )}
-        {messages.map((msg, i) => (
+{messages.map((msg, i) => (
           <div
             key={i}
             className={`flex ${

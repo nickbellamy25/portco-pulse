@@ -499,9 +499,6 @@ export function ChatInterface({
 
       {/* Input area — always visible */}
       <div className="border-t border-border px-4 pt-2 pb-3">
-        {hintText && (
-          <p className="text-[11px] text-muted-foreground/70 mb-1.5 leading-snug">{hintText}</p>
-        )}
         <div className="flex flex-col gap-2">
           {!pendingPayload && (
             <FileUploadZone

@@ -76,19 +76,21 @@ export function PersistentChatPanel({
         <button
           type="button"
           onClick={toggleChat}
-          className="flex flex-col items-center justify-center gap-2 h-full w-full transition-colors"
+          className="flex flex-col items-center justify-center h-full w-full transition-colors"
           style={{ backgroundColor: "white", borderRight: "1px solid #e0e0e0" }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f5f5f5")}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
           aria-label="Open chat panel"
         >
-          <MessageSquare className="h-4 w-4 text-green-600" />
-          <span
-            className="text-xs font-medium tracking-widest"
-            style={{ writingMode: "vertical-lr", color: "black" }}
-          >
-            Pulse AI
-          </span>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+            <MessageSquare className="h-4 w-4 text-green-600" />
+            <span
+              className="text-xs font-medium tracking-widest"
+              style={{ writingMode: "vertical-lr", transform: "rotate(180deg)", color: "black" }}
+            >
+              Pulse AI
+            </span>
+          </div>
         </button>
       )}
 

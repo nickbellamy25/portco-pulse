@@ -114,3 +114,7 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-06] | Chat AI narrated its thought process out loud ("Wait — correcting the sort:") in a PE analyst context | System prompt must explicitly prohibit self-correction narration — present only the final correct answer, never the reasoning process.
 
 [2026-04-06] | Chat AI still opened with wrong company name before self-correcting, even after no-narration rule | No-narration rule alone is insufficient — model generates opening line before computing. Need explicit compute-first rule: "When ranking or comparing, compute the correct answer from data FIRST, then write. Opening statement must match the conclusion."
+
+[2026-04-06] | Chat Q&A conclusions repeated table data verbosely — named 2nd and 3rd place, restated trends visible in the table | Conclusion rule: one sentence answering exactly what was asked (winner + key figure). Only add a second sentence if it reveals something NOT shown in the table. Never name 2nd/3rd place unless asked. If it's in the table, don't repeat it in prose.
+
+[2026-04-06] | Chat Q&A tables had no visual hierarchy — all rows looked equal | Table formatting rule: bold all column headers (**header**). Bold every cell in the most relevant row (**value**) — e.g. the top-ranked company in a ranking question.

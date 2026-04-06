@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileUploadZone } from "./FileUploadZone";
@@ -47,6 +47,7 @@ interface Props {
   chatEndpoint?: string;
   contextPeriod?: string;  // pre-filled period from URL param (e.g. reminder link with ?period=April 2026)
   hintText?: string;
+  autoMessage?: string;
 }
 
 export function ChatInterface({
@@ -61,6 +62,7 @@ export function ChatInterface({
   chatEndpoint = "/api/chat/submit",
   contextPeriod,
   hintText,
+  autoMessage,
 }: Props) {
   // Restore submitted cards after the text history (they happened at the end of the prior session)
   const restoredMessages: ChatMessage[] = [
@@ -84,6 +86,7 @@ export function ChatInterface({
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autoMessageSentRef = useRef(false);
 
   const sendMessage = useCallback(async (text: string, uploads: UploadResult[]) => {
     const userText = text.trim();
@@ -262,6 +265,15 @@ export function ChatInterface({
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
   }, [token, contextDismissed, contextDataTypes, contextPeriods]);
+
+  useEffect(() => {
+    if (autoMessage && !autoMessageSentRef.current) {
+      autoMessageSentRef.current = true;
+      // Small delay so the component is fully mounted
+      const t = setTimeout(() => sendMessage(autoMessage, []), 100);
+      return () => clearTimeout(t);
+    }
+  }, [autoMessage, sendMessage]);
 
   async function handleConfirm(editedPayload: SubmissionPayload) {
     setIsSubmitting(true);

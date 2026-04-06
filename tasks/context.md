@@ -124,3 +124,9 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-06] | Chat Q&A tables were not sorted by the metric relevant to the question | Table rows must be sorted by the metric most relevant to the question — e.g. fastest-growth question → sort by growth rate descending so the answer is at the top row.
 
 [2026-04-06] | Collapsed Pulse AI tab showed icon after text — icon appeared at top of flex-col but vertical-rl + rotate(180deg) text reads bottom-to-top, so visually the order was reversed | In a flex-col vertical tab with rotated text, DOM order is visually reversed. To read "icon → text" from bottom to top, put the text span FIRST in DOM and the icon SECOND. The expanded header (icon then text, left-to-right) is the reference — the collapsed tab must match it visually.
+
+[2026-04-06] | Notification linkUrl pointed investors to /submit/[token] operator chat UI | In topbar handleClick, intercept linkUrls starting with /submit/ or /onboard/ and redirect to /submissions for firm-side users. The onboarding_request notification correctly targets operators in code but stale DB data can affect investors.
+
+[2026-04-06] | PortfolioQAPane messages state was component-local — lost on navigation | Lift messages state to ChatPanelExpanded and pass as props to PortfolioQAPane. This keeps the portfolio chat session alive when user navigates between Dashboard, Analytics, and back.
+
+[2026-04-06] | Chip auto-send in ChatInterface must guard against re-firing on re-render | Use autoMessageSentRef (useRef) to ensure autoMessage only fires once. The ref persists across re-renders unlike a useState flag.

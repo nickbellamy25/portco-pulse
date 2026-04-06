@@ -130,6 +130,7 @@ function ChatPanelExpanded({
   const searchParams = useSearchParams();
   const [ctx, setCtx] = useState<ChatCtx>(null);
   const [loading, setLoading] = useState(true);
+  const [portfolioMessages, setPortfolioMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
 
   // Company ID from URL — only honoured on relevant routes
   const companyIdFromUrl: string | null =
@@ -208,7 +209,7 @@ function ChatPanelExpanded({
             </p>
           </div>
         ) : ctx.kind === "portfolio" ? (
-          <PortfolioQAPane />
+          <PortfolioQAPane messages={portfolioMessages} setMessages={setPortfolioMessages} />
         ) : (
           <CompanyChat ctx={ctx} />
         )}
@@ -222,7 +223,14 @@ function ChatPanelExpanded({
 // ---------------------------------------------------------------------------
 
 function CompanyChat({ ctx }: { ctx: CompanyContext }) {
-  // Use openingMessage as a synthetic first message when there's no history
+  const [pendingChip, setPendingChip] = useState<string | null>(null);
+
+  const companyChips = [
+    `How is ${ctx.companyName} tracking against plan?`,
+    `Show ${ctx.companyName}'s revenue trend`,
+    `What are ${ctx.companyName}'s latest KPIs?`,
+  ];
+
   const initialMessages: InitialMsg[] =
     ctx.initialMessages && ctx.initialMessages.length > 0
       ? ctx.initialMessages
@@ -231,17 +239,33 @@ function CompanyChat({ ctx }: { ctx: CompanyContext }) {
       : [];
 
   return (
-    <ChatInterface
-      token={ctx.token}
-      companyName={ctx.companyName}
-      firmName={ctx.firmName}
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      initialMessages={initialMessages as any}
-      enabledKpis={ctx.enabledKpis}
-      submittedByUserId={ctx.userId}
-      mode={ctx.chatMode}
-      chatEndpoint={ctx.chatEndpoint}
-    />
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Contextual chips */}
+      <div className="shrink-0 px-3 pt-2 pb-1 flex flex-wrap gap-1.5 border-b border-border">
+        {companyChips.map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            onClick={() => setPendingChip(chip)}
+            className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors"
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+      <ChatInterface
+        token={ctx.token}
+        companyName={ctx.companyName}
+        firmName={ctx.firmName}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        initialMessages={initialMessages as any}
+        enabledKpis={ctx.enabledKpis}
+        submittedByUserId={ctx.userId}
+        mode={ctx.chatMode}
+        chatEndpoint={ctx.chatEndpoint}
+        autoMessage={pendingChip ?? undefined}
+      />
+    </div>
   );
 }
 
@@ -254,12 +278,32 @@ interface QAMessage {
   content: string;
 }
 
-function PortfolioQAPane() {
-  const [messages, setMessages] = useState<QAMessage[]>([]);
+interface PortfolioQAPaneProps {
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  setMessages: React.Dispatch<React.SetStateAction<Array<{ role: "user" | "assistant"; content: string }>>>;
+}
+
+function PortfolioQAPane({ messages, setMessages }: PortfolioQAPaneProps) {
+  const pathname = usePathname();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const chips: string[] = (() => {
+    if (pathname === "/dashboard") return [
+      "Which portco is most at risk?",
+      "Show portfolio revenue last period",
+      "Who's behind on plan YTD?",
+      "Any active KPI alerts?",
+    ];
+    if (pathname === "/submissions") return [
+      "Which companies haven't submitted this period?",
+      "Show submission status this month",
+      "Who submitted most recently?",
+    ];
+    return [];
+  })();
 
   const sendMessage = useCallback(
     async (q: string) => {
@@ -446,6 +490,22 @@ function PortfolioQAPane() {
 
       {/* Footer */}
       <div className="shrink-0 border-t border-border px-3 pt-2 pb-2">
+
+        {chips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {chips.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => sendMessage(chip)}
+                disabled={isLoading}
+                className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex gap-2 items-end">
           <textarea

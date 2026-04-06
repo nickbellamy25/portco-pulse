@@ -86,7 +86,18 @@ export function Topbar({ userName, userRole }: TopbarProps) {
       setItems((prev) => prev.map((n) => n.id === item.id ? { ...n, isRead: true } : n));
     }
     setOpen(false);
-    if (item.linkUrl) router.push(item.linkUrl);
+    if (item.linkUrl) {
+      const url = item.linkUrl;
+      // Strip the origin so we get just the pathname+query
+      let path = url;
+      try { path = new URL(url).pathname + new URL(url).search; } catch { /* relative URL already */ }
+      // Operator submission/onboarding links should not be opened by firm users — redirect to submissions
+      if (path.startsWith("/submit/") || path.startsWith("/onboard/")) {
+        router.push("/submissions");
+      } else {
+        router.push(path);
+      }
+    }
   }
 
   const initials = userName

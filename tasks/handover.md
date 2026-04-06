@@ -43,6 +43,12 @@ The app is fully functional as a local prototype. All Phase 1 + Phase 2 features
 - Seeded with 8 PE companies + 1 independent operator, Jan 2023 – Feb 2026 history
 - `pnpm db:reset` is the only command needed
 
+### Session 2026-04-06 (continued) — Chat pane features
+- Contextual prompt chips: built for PortfolioQAPane (Dashboard: 4 chips, Submissions: 3 chips) and CompanyChat (3 company-specific chips using company name)
+- Portfolio Q&A session persistence: lifted messages state to ChatPanelExpanded so conversation survives navigation between pages
+- Notification routing fix: firm users clicking operator submission/onboard links are redirected to /submissions instead of the operator chat UI
+- ChatInterface: added `autoMessage` prop for chip-triggered sends
+
 ### Session 2026-04-06 (this session) — Chat pane polish
 - Fixed three outstanding chat pane issues: zoom root cause (`zoom: 0.85` removed from `app/layout.tsx`), Ask AI tab styling (inline styles to force white bg), duplicate hint text removed from `PortfolioQAPane`
 - Removed textarea placeholder from `PortfolioQAPane`, added "Message..." placeholder

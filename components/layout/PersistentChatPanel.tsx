@@ -184,7 +184,7 @@ function ChatPanelExpanded({
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
-          <MessageSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-[13px] font-medium text-muted-foreground shrink-0">Pulse AI</span>
           {badge}
         </div>
         <button

@@ -69,8 +69,28 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 
 ---
 
+## Chat Q&A Response Style
+
+[2026-04-06] | Chat Q&A responses were too wordy — lead-up sentences, "Here's what I found" preambles, assistant framing | Both `assemblePortfolioQASystemPrompt` and the ANSWERING KPI QUESTIONS section of `assembleSystemPrompt` must enforce: (1) lead with the answer/number, (2) no preambles, (3) short sentences, (4) written summary 2–3 lines max (tables are fine), (5) analyst tone — state facts directly. Persona is "senior PE analyst", not "analytics assistant". Never regress these rules.
+
+---
+
 ## Analytics
 
 [2026-03-20] | Summing incomplete monthly ÷12 plan values gave wrong quarterly/annual totals | For $ KPIs with annual-granularity plans: store raw annual target separately (`planAnnualTarget`). Client uses `planAnnualTarget / 4` for quarterly plan and `planAnnualTarget` directly for FY Plan — never sum the per-month ÷12 values.
 
 [2026-03-20] | Aggregation rules unclear across view modes | $ (currency) → sum. % (percent) → average. # (count/integer) → last (end-of-period stock metric, e.g. headcount at end of quarter).
+
+---
+
+## Workflow
+
+[2026-04-06] | Direct file edits made instead of using subagents — violates CLAUDE.md workflow rule | All code changes, file edits, and codebase exploration MUST go through the Agent tool. Use Explore subagent for reading/exploring, general-purpose subagent for edits. Never use Edit/Write/Bash tools directly on app code. Only use Read/Grep/Glob to gather just enough context to brief a subagent precisely.
+
+---
+
+## Chat Pane Layout
+
+[2026-04-06] | Chat pane used `position: fixed` rendered outside the flex row, then `sticky` inside the flex row — both caused overlay | Correct pattern: `h-screen flex flex-col` on the outer shell, `shrink-0 z-40` on the topbar wrapper, `flex flex-1 min-h-0` on the content row, `overflow-y-auto` on `<main>`. Panel is a plain flex child: `w-[360px] shrink-0 border-l border-border bg-white flex flex-col overflow-hidden` — no `fixed`, no `sticky`, no `z-index`. Page content scrolls within `<main>`, not the browser window. Never use `sticky` or `fixed` for the chat panel.
+
+[2026-04-06] | Direct file edits made instead of using subagents — violates CLAUDE.md workflow rule | All code changes, file edits, and codebase exploration MUST go through the Agent tool with appropriate subagents (general-purpose for edits, Explore for exploration). Never use Edit/Write/Bash directly for app code. The main context reads files only to brief a subagent precisely.

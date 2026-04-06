@@ -50,9 +50,24 @@ The app is fully functional as a local prototype. The most recent major feature 
 - FY2024 / FY2025 / FY2026 plans for 6 companies
 - `pnpm db:reset` is the only command needed (seed.ts embeds all manual migrations)
 
+### This session (2026-04-06)
+- Chat pane layout fixed: was `position: fixed` (overlay), tried `sticky` (also overlay), correct solution is `h-screen flex flex-col` outer shell + `flex flex-1 min-h-0` content row + `overflow-y-auto` on `<main>` + plain flex child for panel (`w-[360px] shrink-0 ... overflow-hidden`, no fixed/sticky)
+- Portfolio Q&A and Company Analytics chat system prompts updated: analyst tone, lead with answer/number, no preambles, 2–3 line max summaries, "senior PE analyst" persona
+- Session management docs created: CLAUDE.md merged, tasks/ folder bootstrapped
+
 ---
 
 ## What's in progress / open items
+
+0. **Chat pane redesign — plan approved, implement next session**
+   - Plan: `PersistentChatPanel.tsx` full redesign + remove topbar Chat button
+   - Closed state: 36px wide column (`2.25rem`), full height, primary-color background, vertical "Ask AI" text + icon, one click opens
+   - Open state: `38vw` width (`min-w-[300px]`), animated via `transition-[width] duration-300 ease-in-out` with inline `style={{ width }}`
+   - Never return null — outer container always renders as a flex child
+   - `ChatPanelExpanded` only mounts when open (no API calls when closed)
+   - `overflow-hidden` on outer div clips content during width animation
+   - Files: `components/layout/PersistentChatPanel.tsx` (full redesign), `components/layout/topbar.tsx` (remove Chat button + useChatContext import)
+   - Layout (`app/(app)/layout.tsx`) needs NO changes
 
 1. **Company-specific KPIs not wired into the chat submission form** — custom KPIs added per company in Company Settings don't yet appear in the chat submission flow (`/submit/[token]`). Only firm-wide KPIs are currently shown.
 2. **Submission Tracking UX** — detailed UX review not yet done; functional but may have rough edges
@@ -79,6 +94,7 @@ The app is fully functional as a local prototype. The most recent major feature 
 - Run commands separately (not with `&&`) — terminal is PowerShell in VSCode
 - No Docker; local prototype first, then Linux hosting
 - All code must be production-ready as written — no "we can fix this later for prod"
+- Always use subagents for all code changes and exploration — never direct edits. This was corrected mid-session on 2026-04-06.
 
 ---
 

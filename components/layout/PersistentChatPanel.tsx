@@ -85,7 +85,7 @@ export function PersistentChatPanel({
           <MessageSquare className="h-4 w-4 text-green-600" />
           <span
             className="text-xs font-medium tracking-widest"
-            style={{ writingMode: "vertical-rl", color: "black" }}
+            style={{ writingMode: "vertical-lr", color: "black" }}
           >
             Pulse AI
           </span>

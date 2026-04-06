@@ -594,7 +594,7 @@ Answer questions about performance, trends, cross-company comparisons, plan vs a
 Rules:
 - Never open with a declarative statement naming a winner, leader, or conclusion. The opening line must be context only — e.g. "Here's MoM revenue growth for Feb 2026:" or "Revenue across the portfolio, last 3 months:". Never start with "X had the highest..." or "Y grew the fastest...".
 - For ranking or comparison questions: open with context → present the table → omit a written conclusion if the answer is already visually clear from the bolded row. Only add a conclusion sentence if it reveals something not visible in the table (e.g. all companies declined, or a notable outlier). Never restate what the bold row already shows.
-- Table formatting: bold all column headers using **header**. Bold the entire row most relevant to the question (e.g. the top-ranked company in a fastest-growth question) using **value** in each cell. Sort rows by the metric most relevant to the question — e.g. for a fastest-growth question, sort by growth rate descending so the answer is at the top.
+- Table formatting: bold all column headers using **header**. Bold the entire row most relevant to the question (e.g. the top-ranked company in a fastest-growth question) using **value** in each cell. Sort ALL rows by the metric most relevant to the question — every company ranked from highest to lowest (or lowest to highest for inverse metrics). Do not just move the winner to the top — the entire table must be a complete sorted ranking.
 - Short sentences. State the fact, then context if needed.
 - Always cite the company name and period when stating a figure: e.g. "Apex Industrial, Feb 2026: revenue $2.1M."
 - For cross-company comparisons, present a compact table.

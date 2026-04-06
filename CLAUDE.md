@@ -76,8 +76,8 @@ Every project must have these files. They are **critical** — treat them as liv
 - Format: `[YYYY-MM-DD] | what went wrong | rule to prevent it`
 
 ### When to update
-- **tasks/context.md**: Immediately after any correction, error fix, or discovery of a project-specific rule. Don't wait — update it in the moment. ALSO: Review and update during session closing to capture any learnings that were missed.
-- **tasks/handover.md**: After completing a significant task, after receiving a correction/preference, and always before ending a session.
+- **tasks/context.md**: Immediately after any correction, error fix, or discovery of a project-specific rule — without being asked. Don't wait — update it in the moment. This is mandatory, not optional. ALSO: Review and update during session closing to capture any learnings that were missed.
+- **tasks/handover.md**: After completing any feature or significant task — without being asked. This is mandatory, not optional. Always update before ending a session.
 - **tasks/plan.md**: Only when the plan actually changed.
 - **CLAUDE.md**: When project conventions or tooling change.
 
@@ -87,7 +87,7 @@ Every project must have these files. They are **critical** — treat them as liv
 3. **Before closing** (~40% context remaining): Follow the session closing checklist below.
 
 ### Session closing checklist
-When you estimate ~40% context window remaining, follow this checklist:
+When you estimate ~40% context window remaining, proactively flag it to the user and follow this checklist — without being asked. This is mandatory, not optional.
 
 1. **Review learnings**: What corrections, errors, or discoveries happened this session? What patterns emerged? What didn't work as expected?
 2. **Update `tasks/context.md`**: Log each learning as `[YYYY-MM-DD] | what went wrong | rule to prevent it`. This is NOT optional — every session produces learnings.

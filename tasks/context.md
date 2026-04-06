@@ -1,0 +1,76 @@
+# Context — PortCo Pulse
+Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | rule to prevent it`
+
+---
+
+## Database & Migrations
+
+[2026-03-14] | Drizzle migrate() sometimes doesn't pick up new migration files in tsx scripts | Apply schema changes manually: `node -e "const Database = require('better-sqlite3'); const db = new Database('portco-pulse.db'); db.exec('ALTER TABLE ... ADD COLUMN ...'); console.log('done');"` — always verify with a quick select after.
+
+[2026-03-14] | Hard-deleting kpi_definitions throws FK constraint error | Always soft-delete KPIs: `db.update(schema.kpiDefinitions).set({ active: false }).where(...)`. First delete threshold_rules for that KPI (no downstream FKs), then soft-delete the definition. Never hard-delete.
+
+[2026-03-19] | db:reset wiped manual columns not tracked by Drizzle | `pnpm db:reset` is now the ONLY command needed — seed.ts embeds all manual migrations. No separate migrate-manual.js needed. Steps: (1) stop dev server, (2) `pnpm db:reset`, (3) start dev server, (4) log out and back in.
+
+[2026-03-14] | SQLite EPERM file lock during db:reset | Always stop the dev server (Ctrl+C) before running `pnpm db:reset`. SQLite on Windows locks the .db file.
+
+[2026-03-14] | Stale firmId in JWT session after db:reset | After any db:reset, log out and back in before testing — the session has the old firmId which no longer exists.
+
+---
+
+## KPI Config
+
+[2026-03-19] | KPI settings changed via UI reverted on db:reset | Seed script is source of truth. When changing any KPI config (direction, thresholds, label, etc.), always update BOTH the live DB AND `scripts/seed.ts` so the change survives a future db:reset.
+
+[2026-03-20] | Headcount ragDirection was "higher_is_better" causing wrong coloring | Changed to "any_variance" — Headcount is a neutral stock metric, not directional. See `scripts/seed.ts` around the Headcount KPI definition.
+
+---
+
+## Date Handling
+
+[2026-03-15] | `new Date("YYYY-MM-DD")` parses as UTC midnight, shifts one day back in Eastern time on Windows | Always parse YYYY-MM-DD strings with noon suffix: `new Date(dateStr + "T12:00:00")`. For outputting back to YYYY-MM-DD after date arithmetic, use local components: `` `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` `` — never `.toISOString().slice(0,10)` which converts to UTC.
+
+[2026-03-15] | Business day calculations produced wrong end dates | Start date cursor from noon (not midnight or end-of-day) so result dates are also at noon and safe for toLocalDateStr.
+
+---
+
+## UI / Display
+
+[2026-03-18] | KPI unit "#" rendered next to numbers looked wrong | Suppress the `#` unit entirely — show count as plain number. Rule for all `fmtVal` functions: `$` prefix for currency, `%` suffix for percentage, nothing for all other units including `#`.
+
+[2026-03-20] | Status badge labels inconsistent across the app | Standard is "On Track / At Risk / Off Track" everywhere. Never use "High/Medium/Low Priority" or "Green/Amber/Red" as text labels. Badge colors: green for On Track, amber for At Risk, red for Off Track.
+
+---
+
+## Fonts / CSS
+
+[2026-03-14] | Tailwind v4 `@theme inline` circular reference (`--font-sans: var(--font-sans)`) didn't resolve | Set font directly on `body` in `@layer base` in globals.css: `font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;`. Don't use @theme tokens for this. Next.js font variable is set with `variable: "--font-sans"` in layout.tsx.
+
+---
+
+## Production Standards
+
+[2026-03-19] | Multiple instances of localhost hardcoding found | Never hardcode `localhost` or any URL. Always use `process.env.NEXT_PUBLIC_APP_URL`. File paths must use `DB_PATH` / `UPLOADS_DIR` env vars. Email sender must come from DB settings, not hardcode. All code must work in production with only the deployment checklist steps.
+
+---
+
+## Shell / Terminal
+
+[2026-03-14] | PowerShell breaks multi-line `node -e "..."` quotes badly | Never use multi-line `node -e "..."` in PowerShell. Write a .js file and run with `node file.js` instead.
+
+[2026-03-14] | Commands with `&&` don't work in VSCode terminal on this machine | Run commands separately, not chained with `&&`. VSCode terminal is PowerShell.
+
+---
+
+## Charts
+
+[2026-03-18] | Threshold lines on trend chart only appeared for some companies and looked confusing | Removed threshold lines from the Performance Trends chart. KPI Health tiles (pure text, no bars) cover the same info more cleanly.
+
+[2026-03-18] | Bars/gauges on KPI Health tiles added visual noise without insight | KPI Health = pure text tiles only. No bars, no gauges. Fixed width `w-72`, flex-wrap layout.
+
+---
+
+## Analytics
+
+[2026-03-20] | Summing incomplete monthly ÷12 plan values gave wrong quarterly/annual totals | For $ KPIs with annual-granularity plans: store raw annual target separately (`planAnnualTarget`). Client uses `planAnnualTarget / 4` for quarterly plan and `planAnnualTarget` directly for FY Plan — never sum the per-month ÷12 values.
+
+[2026-03-20] | Aggregation rules unclear across view modes | $ (currency) → sum. % (percent) → average. # (count/integer) → last (end-of-period stock metric, e.g. headcount at end of quarter).

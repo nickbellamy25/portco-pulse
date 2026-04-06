@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1773428821997,
+      "tag": "0000_plain_baron_strucker",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1773435720028,
+      "tag": "0001_yummy_vance_astro",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1773483245531,
+      "tag": "0002_fixed_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1773489856882,
+      "tag": "0003_kind_randall",
+      "breakpoints": true
+    }
+  ]
+}

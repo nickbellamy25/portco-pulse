@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# database (local SQLite — never commit)
+*.db
+*.db-shm
+*.db-wal
+
+# uploads (user-uploaded files)
+/uploads/
+
+# local test data / scratch files
+*.csv
+*.txt

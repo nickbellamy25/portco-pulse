@@ -1,0 +1,1 @@
+ALTER TABLE `companies` ADD `submission_due_days` integer;

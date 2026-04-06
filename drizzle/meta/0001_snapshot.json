@@ -1,0 +1,1583 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "95d32538-59b7-420d-8a4e-ba1c40b41ec2",
+  "prevId": "09efcf9f-802c-4be2-b7d4-c73305a7eae4",
+  "tables": {
+    "alerts": {
+      "name": "alerts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "period_id": {
+          "name": "period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kpi_definition_id": {
+          "name": "kpi_definition_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "alerts_submission_def_idx": {
+          "name": "alerts_submission_def_idx",
+          "columns": [
+            "submission_id",
+            "kpi_definition_id"
+          ],
+          "isUnique": true
+        },
+        "alerts_firm_company_period_idx": {
+          "name": "alerts_firm_company_period_idx",
+          "columns": [
+            "firm_id",
+            "company_id",
+            "period_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "alerts_firm_id_firms_id_fk": {
+          "name": "alerts_firm_id_firms_id_fk",
+          "tableFrom": "alerts",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "alerts_company_id_companies_id_fk": {
+          "name": "alerts_company_id_companies_id_fk",
+          "tableFrom": "alerts",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "alerts_period_id_periods_id_fk": {
+          "name": "alerts_period_id_periods_id_fk",
+          "tableFrom": "alerts",
+          "tableTo": "periods",
+          "columnsFrom": [
+            "period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "alerts_submission_id_submissions_id_fk": {
+          "name": "alerts_submission_id_submissions_id_fk",
+          "tableFrom": "alerts",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "alerts_kpi_definition_id_kpi_definitions_id_fk": {
+          "name": "alerts_kpi_definition_id_kpi_definitions_id_fk",
+          "tableFrom": "alerts",
+          "tableTo": "kpi_definitions",
+          "columnsFrom": [
+            "kpi_definition_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "companies": {
+      "name": "companies",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "industry": {
+          "name": "industry",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "submission_token": {
+          "name": "submission_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "link_mode": {
+          "name": "link_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "companies_submission_token_unique": {
+          "name": "companies_submission_token_unique",
+          "columns": [
+            "submission_token"
+          ],
+          "isUnique": true
+        },
+        "companies_firm_slug_idx": {
+          "name": "companies_firm_slug_idx",
+          "columns": [
+            "firm_id",
+            "slug"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "companies_firm_id_firms_id_fk": {
+          "name": "companies_firm_id_firms_id_fk",
+          "tableFrom": "companies",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "email_settings": {
+      "name": "email_settings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "from_email": {
+          "name": "from_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'noreply@portcopulse.com'"
+        },
+        "from_name": {
+          "name": "from_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'PortCo Pulse'"
+        },
+        "submission_reminder_enabled": {
+          "name": "submission_reminder_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "monthly_digest_enabled": {
+          "name": "monthly_digest_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "threshold_alert_enabled": {
+          "name": "threshold_alert_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "submission_notification_enabled": {
+          "name": "submission_notification_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "reminder_subject": {
+          "name": "reminder_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Action Required: KPI Submission for {{period}}'"
+        },
+        "reminder_body": {
+          "name": "reminder_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Dear {{company_name}},\n\nThis is a reminder that your KPI submission for {{period}} is due by {{due_date}}.\n\nPlease submit your data using the link below:\n{{submission_link}}\n\nRequired documents:\n{{required_docs}}\n\nThank you.'"
+        },
+        "monthly_digest_recipients": {
+          "name": "monthly_digest_recipients",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "monthly_digest_subject": {
+          "name": "monthly_digest_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'PortCo Pulse - Monthly Portfolio Digest for {{month_year}}'"
+        },
+        "monthly_digest_body": {
+          "name": "monthly_digest_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Portfolio Submission Summary - {{month_year}}\n\nHere''s your monthly summary of portfolio company performance:\n\nPortfolio Overview:\n• Total Companies: {{total_companies}}\n• Companies Submitted This Period: {{submitted_count}}\n• Active Alerts: {{active_alerts}}\n\nView full dashboard: {{dashboard_link}}'"
+        },
+        "threshold_alert_recipients": {
+          "name": "threshold_alert_recipients",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "threshold_alert_subject": {
+          "name": "threshold_alert_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'⚠️ Threshold Breach Alert - {{company_name}}'"
+        },
+        "threshold_alert_body": {
+          "name": "threshold_alert_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'⚠️ THRESHOLD BREACH ALERT\n\nA threshold breach has been detected for {{company_name}}:\n\nBreach Details:\n• Metric: {{metric_name}}\n• Value: {{value}}\n• Period: {{period}}\n• Submission: {{submission_date}}\n• Threshold: {{threshold_value}}\n• Severity: {{severity}}\n• Partner: {{partner_email}}\n\nView full details: {{dashboard_link}}'"
+        },
+        "submission_notification_recipients": {
+          "name": "submission_notification_recipients",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "submission_notification_subject": {
+          "name": "submission_notification_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'New Submission Received - {{company_name}}'"
+        },
+        "submission_notification_body": {
+          "name": "submission_notification_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'A new submission has been received from {{company_name}}.\n\nSubmission Details:\n• Period: {{period}}\n• Submitted by: {{submitted_by}}\n• Submission time: {{submission_time}}\n\nKey Metrics:\n• Revenue: {{revenue}}\n• EBITDA: {{ebitda}}\n• Operating Cash Flow: {{ocf}}\n• Gross Margin: {{gross_margin}}\n• Cash: {{cash}}\n\nView full details: {{dashboard_link}}'"
+        },
+        "invitation_subject": {
+          "name": "invitation_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'You''ve been invited to PortCo Pulse'"
+        },
+        "invitation_body": {
+          "name": "invitation_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Hello,\n\nYou have been invited to join PortCo Pulse, a portfolio monitoring platform.\n\nClick the link below to set up your account:\n{{invitation_link}}\n\nThis link expires in 48 hours.\n\nThank you.'"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "email_settings_firm_id_unique": {
+          "name": "email_settings_firm_id_unique",
+          "columns": [
+            "firm_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "email_settings_firm_id_firms_id_fk": {
+          "name": "email_settings_firm_id_firms_id_fk",
+          "tableFrom": "email_settings",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "financial_documents": {
+      "name": "financial_documents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "period_id": {
+          "name": "period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "document_type": {
+          "name": "document_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "file_path": {
+          "name": "file_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "uploaded_by_user_id": {
+          "name": "uploaded_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "uploaded_at": {
+          "name": "uploaded_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "fin_docs_submission_type_version_idx": {
+          "name": "fin_docs_submission_type_version_idx",
+          "columns": [
+            "submission_id",
+            "document_type",
+            "version"
+          ],
+          "isUnique": true
+        },
+        "fin_docs_submission_id_idx": {
+          "name": "fin_docs_submission_id_idx",
+          "columns": [
+            "submission_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "financial_documents_firm_id_firms_id_fk": {
+          "name": "financial_documents_firm_id_firms_id_fk",
+          "tableFrom": "financial_documents",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "financial_documents_company_id_companies_id_fk": {
+          "name": "financial_documents_company_id_companies_id_fk",
+          "tableFrom": "financial_documents",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "financial_documents_period_id_periods_id_fk": {
+          "name": "financial_documents_period_id_periods_id_fk",
+          "tableFrom": "financial_documents",
+          "tableTo": "periods",
+          "columnsFrom": [
+            "period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "financial_documents_submission_id_submissions_id_fk": {
+          "name": "financial_documents_submission_id_submissions_id_fk",
+          "tableFrom": "financial_documents",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "financial_documents_uploaded_by_user_id_users_id_fk": {
+          "name": "financial_documents_uploaded_by_user_id_users_id_fk",
+          "tableFrom": "financial_documents",
+          "tableTo": "users",
+          "columnsFrom": [
+            "uploaded_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "firm_link_tokens": {
+      "name": "firm_link_tokens",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "link_mode": {
+          "name": "link_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "firm_link_tokens_token_unique": {
+          "name": "firm_link_tokens_token_unique",
+          "columns": [
+            "token"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "firm_link_tokens_firm_id_firms_id_fk": {
+          "name": "firm_link_tokens_firm_id_firms_id_fk",
+          "tableFrom": "firm_link_tokens",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "firms": {
+      "name": "firms",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "org_type": {
+          "name": "org_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pe_firm'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "kpi_definitions": {
+      "name": "kpi_definitions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "section": {
+          "name": "section",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value_type": {
+          "name": "value_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_required": {
+          "name": "is_required",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        }
+      },
+      "indexes": {
+        "kpi_defs_firm_key_company_idx": {
+          "name": "kpi_defs_firm_key_company_idx",
+          "columns": [
+            "firm_id",
+            "key",
+            "company_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "kpi_definitions_firm_id_firms_id_fk": {
+          "name": "kpi_definitions_firm_id_firms_id_fk",
+          "tableFrom": "kpi_definitions",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "kpi_definitions_company_id_companies_id_fk": {
+          "name": "kpi_definitions_company_id_companies_id_fk",
+          "tableFrom": "kpi_definitions",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "kpi_values": {
+      "name": "kpi_values",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "period_id": {
+          "name": "period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kpi_definition_id": {
+          "name": "kpi_definition_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actual_number": {
+          "name": "actual_number",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actual_text": {
+          "name": "actual_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "target_number": {
+          "name": "target_number",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "target_text": {
+          "name": "target_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "target_date": {
+          "name": "target_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "kpi_values_submission_def_idx": {
+          "name": "kpi_values_submission_def_idx",
+          "columns": [
+            "submission_id",
+            "kpi_definition_id"
+          ],
+          "isUnique": true
+        },
+        "kpi_values_firm_company_idx": {
+          "name": "kpi_values_firm_company_idx",
+          "columns": [
+            "firm_id",
+            "company_id"
+          ],
+          "isUnique": false
+        },
+        "kpi_values_firm_period_idx": {
+          "name": "kpi_values_firm_period_idx",
+          "columns": [
+            "firm_id",
+            "period_id"
+          ],
+          "isUnique": false
+        },
+        "kpi_values_period_id_idx": {
+          "name": "kpi_values_period_id_idx",
+          "columns": [
+            "period_id"
+          ],
+          "isUnique": false
+        },
+        "kpi_values_submission_id_idx": {
+          "name": "kpi_values_submission_id_idx",
+          "columns": [
+            "submission_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "kpi_values_submission_id_submissions_id_fk": {
+          "name": "kpi_values_submission_id_submissions_id_fk",
+          "tableFrom": "kpi_values",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "kpi_values_firm_id_firms_id_fk": {
+          "name": "kpi_values_firm_id_firms_id_fk",
+          "tableFrom": "kpi_values",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "kpi_values_company_id_companies_id_fk": {
+          "name": "kpi_values_company_id_companies_id_fk",
+          "tableFrom": "kpi_values",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "kpi_values_period_id_periods_id_fk": {
+          "name": "kpi_values_period_id_periods_id_fk",
+          "tableFrom": "kpi_values",
+          "tableTo": "periods",
+          "columnsFrom": [
+            "period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "kpi_values_kpi_definition_id_kpi_definitions_id_fk": {
+          "name": "kpi_values_kpi_definition_id_kpi_definitions_id_fk",
+          "tableFrom": "kpi_values",
+          "tableTo": "kpi_definitions",
+          "columnsFrom": [
+            "kpi_definition_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "periods": {
+      "name": "periods",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "period_type": {
+          "name": "period_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "period_start": {
+          "name": "period_start",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "due_date": {
+          "name": "due_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'open'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "periods_firm_type_start_idx": {
+          "name": "periods_firm_type_start_idx",
+          "columns": [
+            "firm_id",
+            "period_type",
+            "period_start"
+          ],
+          "isUnique": true
+        },
+        "periods_firm_id_idx": {
+          "name": "periods_firm_id_idx",
+          "columns": [
+            "firm_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "periods_firm_id_firms_id_fk": {
+          "name": "periods_firm_id_firms_id_fk",
+          "tableFrom": "periods",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "submissions": {
+      "name": "submissions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "period_id": {
+          "name": "period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'draft'"
+        },
+        "submitted_at": {
+          "name": "submitted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "submitted_by_user_id": {
+          "name": "submitted_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        },
+        "last_updated_at": {
+          "name": "last_updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "submissions_company_period_idx": {
+          "name": "submissions_company_period_idx",
+          "columns": [
+            "company_id",
+            "period_id"
+          ],
+          "isUnique": true
+        },
+        "submissions_firm_company_period_idx": {
+          "name": "submissions_firm_company_period_idx",
+          "columns": [
+            "firm_id",
+            "company_id",
+            "period_id"
+          ],
+          "isUnique": false
+        },
+        "submissions_status_idx": {
+          "name": "submissions_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "submissions_period_id_idx": {
+          "name": "submissions_period_id_idx",
+          "columns": [
+            "period_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "submissions_firm_id_firms_id_fk": {
+          "name": "submissions_firm_id_firms_id_fk",
+          "tableFrom": "submissions",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submissions_company_id_companies_id_fk": {
+          "name": "submissions_company_id_companies_id_fk",
+          "tableFrom": "submissions",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submissions_period_id_periods_id_fk": {
+          "name": "submissions_period_id_periods_id_fk",
+          "tableFrom": "submissions",
+          "tableTo": "periods",
+          "columnsFrom": [
+            "period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "submissions_submitted_by_user_id_users_id_fk": {
+          "name": "submissions_submitted_by_user_id_users_id_fk",
+          "tableFrom": "submissions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "submitted_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "threshold_rules": {
+      "name": "threshold_rules",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kpi_definition_id": {
+          "name": "kpi_definition_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rule_type": {
+          "name": "rule_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "threshold_value": {
+          "name": "threshold_value",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "active": {
+          "name": "active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "threshold_rules_firm_id_firms_id_fk": {
+          "name": "threshold_rules_firm_id_firms_id_fk",
+          "tableFrom": "threshold_rules",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "threshold_rules_company_id_companies_id_fk": {
+          "name": "threshold_rules_company_id_companies_id_fk",
+          "tableFrom": "threshold_rules",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "threshold_rules_kpi_definition_id_kpi_definitions_id_fk": {
+          "name": "threshold_rules_kpi_definition_id_kpi_definitions_id_fk",
+          "tableFrom": "threshold_rules",
+          "tableTo": "kpi_definitions",
+          "columnsFrom": [
+            "kpi_definition_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "users": {
+      "name": "users",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "persona": {
+          "name": "persona",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "columns": [
+            "email"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "users_firm_id_firms_id_fk": {
+          "name": "users_firm_id_firms_id_fk",
+          "tableFrom": "users",
+          "tableTo": "firms",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "users_company_id_companies_id_fk": {
+          "name": "users_company_id_companies_id_fk",
+          "tableFrom": "users",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

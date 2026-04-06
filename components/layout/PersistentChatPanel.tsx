@@ -77,7 +77,7 @@ export function PersistentChatPanel({
         <button
           type="button"
           onClick={toggleChat}
-          className="flex flex-col items-center justify-center h-full w-full bg-white shadow-sm gap-2 hover:bg-green-50 transition-colors"
+          className="flex flex-col items-center justify-center h-full w-full bg-white gap-2 hover:bg-gray-50 transition-colors"
           aria-label="Open chat panel"
         >
           <MessageSquare className="h-4 w-4 text-green-600" />
@@ -178,7 +178,7 @@ function ChatPanelExpanded({
     ) : null;
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col flex-1 min-h-0 bg-background">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
@@ -241,7 +241,6 @@ function CompanyChat({ ctx }: { ctx: CompanyContext }) {
       submittedByUserId={ctx.userId}
       mode={ctx.chatMode}
       chatEndpoint={ctx.chatEndpoint}
-      hintText={`Submitting data for ${ctx.companyName}.`}
     />
   );
 }
@@ -376,7 +375,7 @@ function PortfolioQAPane() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Message list */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
         {messages.length === 0 && (

@@ -95,4 +95,8 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 
 [2026-04-06] | Chat pane bottom gets clipped — message input not visible | Chat pane outer div must include `h-full` to fill the available height from its flex-row parent. Without it, the panel only sizes to its content and `overflow-hidden` clips the footer. Full class set: `shrink-0 h-full border-l border-border flex flex-col overflow-hidden transition-[width] ...`.
 
+[2026-04-06] | `h-full` on inner chat panel divs caused bottom cutoff despite outer `h-full` being correct | In a `flex flex-col` parent, inner children must use `flex-1 min-h-0` (not `h-full`) to correctly fill remaining space. `h-full` resolves as a percentage of the parent's block size and is unreliable in flex context. Applies to: `ChatPanelExpanded` root div, `PortfolioQAPane` root div, and any full-height flex children inside the panel.
+
+[2026-04-06] | Hint text rendered twice in company chat — once as `<p>` above textarea, once as textarea placeholder | `ChatInterface` renders its `hintText` prop as a `<p>` above the textarea. Do not pass `hintText` from `CompanyChat` — the textarea placeholder is sufficient. If removing the paragraph hint from `ChatInterface` entirely, also update the submit page to ensure it doesn't rely on it.
+
 [2026-04-06] | Direct file edits made instead of using subagents — violates CLAUDE.md workflow rule | All code changes, file edits, and codebase exploration MUST go through the Agent tool with appropriate subagents (general-purpose for edits, Explore for exploration). Never use Edit/Write/Bash directly for app code. The main context reads files only to brief a subagent precisely.

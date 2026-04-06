@@ -28,10 +28,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`} suppressHydrationWarning>
-        <div style={{ zoom: 0.85 }}>
-          {children}
-          <Toaster />
-        </div>
+        {children}
+        <Toaster />
       </body>
     </html>
   );

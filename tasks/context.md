@@ -110,3 +110,5 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-06] | Assistant message bubble background didn't extend behind wide table content — `max-w-[85%]` was applied to both user and assistant bubbles | For chat message bubbles: user messages get `max-w-[85%]` (right-aligned pill), assistant messages get `w-full overflow-x-auto` (full-width block) so tables and other wide content are always contained within the background.
 
 [2026-04-06] | Chat AI summary contradicted its own table — stated Culinary Concepts had fastest revenue growth when the table showed OptiFi at +2.8% (Culinary was worst at -9.9%) | Add consistency rule to system prompt: written summary must always match the data/table generated. Never let narrative contradict numbers.
+
+[2026-04-06] | Chat AI narrated its thought process out loud ("Wait — correcting the sort:") in a PE analyst context | System prompt must explicitly prohibit self-correction narration — present only the final correct answer, never the reasoning process.

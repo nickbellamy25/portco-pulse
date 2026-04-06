@@ -87,7 +87,7 @@ export function PersistentChatPanel({
             className="text-xs font-medium tracking-widest"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", color: "black" }}
           >
-            Ask AI
+            Pulse AI
           </span>
         </button>
       )}

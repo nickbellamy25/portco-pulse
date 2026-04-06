@@ -77,12 +77,12 @@ export function PersistentChatPanel({
         <button
           type="button"
           onClick={toggleChat}
-          className="flex flex-col items-center justify-center h-full w-full bg-primary gap-2"
+          className="flex flex-col items-center justify-center h-full w-full bg-white shadow-sm gap-2 hover:bg-green-50 transition-colors"
           aria-label="Open chat panel"
         >
-          <MessageSquare className="h-4 w-4 text-primary-foreground" />
+          <MessageSquare className="h-4 w-4 text-green-600" />
           <span
-            className="text-xs font-medium tracking-widest text-primary-foreground"
+            className="text-xs font-medium tracking-widest text-green-600"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
           >
             Ask AI
@@ -175,10 +175,6 @@ function ChatPanelExpanded({
       <span className="text-[11px] font-medium px-2 py-0.5 rounded-full border bg-green-50 text-green-700 border-green-200 truncate max-w-[160px]">
         {ctx.companyName}
       </span>
-    ) : ctx?.kind === "portfolio" ? (
-      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
-        Portfolio
-      </span>
     ) : null;
 
   return (
@@ -212,7 +208,7 @@ function ChatPanelExpanded({
             </p>
           </div>
         ) : ctx.kind === "portfolio" ? (
-          <PortfolioQAPane hintText="Ask anything about your portfolio companies." />
+          <PortfolioQAPane />
         ) : (
           <CompanyChat ctx={ctx} />
         )}
@@ -259,7 +255,7 @@ interface QAMessage {
   content: string;
 }
 
-function PortfolioQAPane({ hintText }: { hintText: string }) {
+function PortfolioQAPane() {
   const [messages, setMessages] = useState<QAMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -456,11 +452,7 @@ function PortfolioQAPane({ hintText }: { hintText: string }) {
 
       {/* Footer */}
       <div className="shrink-0 border-t border-border px-3 pt-2 pb-2">
-        {hintText && (
-          <p className="text-[11px] text-muted-foreground/70 mb-1.5 leading-snug">
-            {hintText}
-          </p>
-        )}
+
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}

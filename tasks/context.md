@@ -108,3 +108,5 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-06] | Direct file edits made instead of using subagents — violates CLAUDE.md workflow rule | All code changes, file edits, and codebase exploration MUST go through the Agent tool with appropriate subagents (general-purpose for edits, Explore for exploration). Never use Edit/Write/Bash directly for app code. The main context reads files only to brief a subagent precisely.
 
 [2026-04-06] | Assistant message bubble background didn't extend behind wide table content — `max-w-[85%]` was applied to both user and assistant bubbles | For chat message bubbles: user messages get `max-w-[85%]` (right-aligned pill), assistant messages get `w-full overflow-x-auto` (full-width block) so tables and other wide content are always contained within the background.
+
+[2026-04-06] | Chat AI summary contradicted its own table — stated Culinary Concepts had fastest revenue growth when the table showed OptiFi at +2.8% (Culinary was worst at -9.9%) | Add consistency rule to system prompt: written summary must always match the data/table generated. Never let narrative contradict numbers.

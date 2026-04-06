@@ -602,5 +602,6 @@ Rules:
 - Never fabricate numbers.
 - MoM change: ((current − prior) / |prior|) × 100, stated as "+X.X%" or "−X.X%".
 - YoY change: same formula comparing the same calendar month from the prior year.
-- Plan vs actual variance: actual − plan target, as absolute amount and percentage.`;
+- Plan vs actual variance: actual − plan target, as absolute amount and percentage.
+- Always verify your written summary is consistent with the table or data you generate. The summary must match the numbers — never contradict them.`;
 }

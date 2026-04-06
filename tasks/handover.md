@@ -50,24 +50,28 @@ The app is fully functional as a local prototype. The most recent major feature 
 - FY2024 / FY2025 / FY2026 plans for 6 companies
 - `pnpm db:reset` is the only command needed (seed.ts embeds all manual migrations)
 
-### This session (2026-04-06)
+### Session 2026-04-06 (earlier)
 - Chat pane layout fixed: was `position: fixed` (overlay), tried `sticky` (also overlay), correct solution is `h-screen flex flex-col` outer shell + `flex flex-1 min-h-0` content row + `overflow-y-auto` on `<main>` + plain flex child for panel (`w-[360px] shrink-0 ... overflow-hidden`, no fixed/sticky)
 - Portfolio Q&A and Company Analytics chat system prompts updated: analyst tone, lead with answer/number, no preambles, 2–3 line max summaries, "senior PE analyst" persona
 - Session management docs created: CLAUDE.md merged, tasks/ folder bootstrapped
+
+### Session 2026-04-06 (this session)
+- `PersistentChatPanel.tsx` redesigned: collapsed tab (2.25rem wide) + animated open (38vw). Old version had `return null` when closed — now always renders as flex child.
+- Full app committed to GitHub (nickbellamy25/portco-pulse) — was entirely untracked before.
+- `.gitignore` updated: added `*.db`, `*.db-shm`, `*.db-wal`, `/uploads/`, `*.csv`, `*.txt`.
+- **THREE CHAT PANE FIXES STILL OUTSTANDING** — see open items below.
 
 ---
 
 ## What's in progress / open items
 
-0. **Chat pane redesign — plan approved, implement next session**
-   - Plan: `PersistentChatPanel.tsx` full redesign + remove topbar Chat button
-   - Closed state: 36px wide column (`2.25rem`), full height, primary-color background, vertical "Ask AI" text + icon, one click opens
-   - Open state: `38vw` width (`min-w-[300px]`), animated via `transition-[width] duration-300 ease-in-out` with inline `style={{ width }}`
-   - Never return null — outer container always renders as a flex child
-   - `ChatPanelExpanded` only mounts when open (no API calls when closed)
-   - `overflow-hidden` on outer div clips content during width animation
-   - Files: `components/layout/PersistentChatPanel.tsx` (full redesign), `components/layout/topbar.tsx` (remove Chat button + useChatContext import)
-   - Layout (`app/(app)/layout.tsx`) needs NO changes
+### PRIORITY: Three chat pane fixes (all attempted, none fully resolved)
+
+**0a. Ask AI tab styling** — Current code: `bg-gray-50 border-r border-gray-200 hover:bg-gray-100` on the button, `text-green-600` on icon and `text-gray-500` on text. User spec: `background: white`, `border: 1px solid #e0e0e0`, `hover: #f5f5f5`, text `black`, icon `text-green-600` only. File: `components/layout/PersistentChatPanel.tsx` line ~80.
+
+**0b. Bottom cutoff — ROOT CAUSE IDENTIFIED** — `app/layout.tsx` line 31 wraps everything in `<div style={{ zoom: 0.85 }}>`. CSS `zoom: 0.85` scales visuals to 85% but `h-screen` uses full 100vh, so the panel only covers 85% of the viewport. **Fix: remove `zoom: 0.85` from the root layout wrapper div.** The inner flex chain in `PersistentChatPanel.tsx` is structurally correct (`flex-1 min-h-0` on inner divs, `h-full` on outer panel). No other changes needed for height.
+
+**0c. Duplicate placeholder text** — `PortfolioQAPane` in `PersistentChatPanel.tsx` has hint text in its footer AND a textarea placeholder. The hint text `<p>` was supposed to be removed already but user still sees two instances. Audit every `<p>` and `placeholder` in the footer area of both `PortfolioQAPane` and `ChatInterface`. Keep only the textarea `placeholder` attribute; remove any `<p>` hint text above the input.
 
 1. **Company-specific KPIs not wired into the chat submission form** — custom KPIs added per company in Company Settings don't yet appear in the chat submission flow (`/submit/[token]`). Only firm-wide KPIs are currently shown.
 2. **Submission Tracking UX** — detailed UX review not yet done; functional but may have rough edges

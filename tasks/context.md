@@ -97,6 +97,12 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 
 [2026-04-06] | `h-full` on inner chat panel divs caused bottom cutoff despite outer `h-full` being correct | In a `flex flex-col` parent, inner children must use `flex-1 min-h-0` (not `h-full`) to correctly fill remaining space. `h-full` resolves as a percentage of the parent's block size and is unreliable in flex context. Applies to: `ChatPanelExpanded` root div, `PortfolioQAPane` root div, and any full-height flex children inside the panel.
 
+[2026-04-06] | ROOT CAUSE of persistent chat pane bottom cutoff: `zoom: 0.85` on root layout wrapper | `app/layout.tsx` line 31 wraps all children in `<div style={{ zoom: 0.85 }}>`. CSS `zoom` scales elements visually to 85% but `h-screen` (100vh) uses the unscaled viewport height. Result: the panel covers only 85% of the visible viewport and the bottom 15% is blank/clipped. Fix: remove `zoom: 0.85` from the root layout wrapper div. The inner flex chain (layout.tsx → PersistentChatPanel.tsx) is structurally correct — `zoom` was the only issue.
+
+[2026-04-06] | `bg-white` Ask AI tab was invisible — blends into white page background | Never use `bg-white` on the closed chat tab; the page background is also white so the tab disappears. Use `bg-gray-50` (slightly off-white) or a clearly distinct color. Diagnostic test: use `bg-red-500` to confirm hot-reload is working, then apply the real color.
+
+[2026-04-06] | Ask AI tab color spec (confirmed by user): white bg, black text, light gray border | Exact spec: `background-color: white`, `color: black` for "Ask AI" text, `border: 1px solid #e0e0e0`, `hover: background #f5f5f5`. Keep green (`text-green-600`) ONLY for the small icon. Do not use any green on the background or text.
+
 [2026-04-06] | Hint text rendered twice in company chat — once as `<p>` above textarea, once as textarea placeholder | `ChatInterface` renders its `hintText` prop as a `<p>` above the textarea. Do not pass `hintText` from `CompanyChat` — the textarea placeholder is sufficient. If removing the paragraph hint from `ChatInterface` entirely, also update the submit page to ensure it doesn't rely on it.
 
 [2026-04-06] | Direct file edits made instead of using subagents — violates CLAUDE.md workflow rule | All code changes, file edits, and codebase exploration MUST go through the Agent tool with appropriate subagents (general-purpose for edits, Explore for exploration). Never use Edit/Write/Bash directly for app code. The main context reads files only to brief a subagent precisely.

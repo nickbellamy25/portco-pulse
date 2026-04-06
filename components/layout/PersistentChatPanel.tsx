@@ -77,7 +77,7 @@ export function PersistentChatPanel({
         <button
           type="button"
           onClick={toggleChat}
-          className="flex flex-col items-center justify-center h-full w-full bg-white gap-2 hover:bg-gray-50 transition-colors"
+          className="flex flex-col items-center justify-center h-full w-full bg-gray-50 border-r border-gray-200 gap-2 hover:bg-gray-100 transition-colors"
           aria-label="Open chat panel"
         >
           <MessageSquare className="h-4 w-4 text-green-600" />

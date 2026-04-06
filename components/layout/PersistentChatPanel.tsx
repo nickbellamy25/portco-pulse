@@ -82,13 +82,13 @@ export function PersistentChatPanel({
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
           aria-label="Open chat panel"
         >
-          <MessageSquare className="h-4 w-4 text-green-600" />
           <span
             className="text-xs font-medium tracking-widest"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", color: "black" }}
           >
             Pulse AI
           </span>
+          <MessageSquare className="h-4 w-4 text-green-600" />
         </button>
       )}
 

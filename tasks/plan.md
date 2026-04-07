@@ -43,7 +43,7 @@ Build a production-ready PE portfolio monitoring platform that a real PE firm co
 - [ ] **Blocklist mode for member access scopes** — currently only allowlist (include specific companies); need blocklist (exclude specific companies)
 - [ ] **Submission Tracking** — verify chat-submitted data surfaces correctly in the status matrix
 - [ ] **Chat submission** — handle edge case: operator uploads combined financials that covers multiple statement types (logic partially exists via `combined_financials` doc type)
-- [~] **Chat pane polish (IN PROGRESS)** — chips at bottom on all pages, remove company badge from header, collapse on navigation, assistant bubble full-width, tab color consistency, system prompt sort/conclusion fixes, dynamic reminder chip on Submission Tracking (live outstanding companies, confirmation flow, wired into sendRemindersAction)
+- [x] **Chat pane polish** — chips at bottom on all pages, remove company badge from header, collapse on navigation, assistant bubble full-width, tab color consistency, system prompt sort/conclusion fixes, dynamic reminder chip on Submission Tracking (live outstanding companies, confirmation flow, wired into sendRemindersAction)
 
 ---
 

@@ -89,6 +89,34 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 
 ---
 
+## Chat Pane — Submission Tracking Chips
+
+[2026-04-06] | Outstanding API returned a single combined `outstanding` array — no distinction between companies with no record vs partial submissions | Split into `noSubmission` (no submission record at all) and `partial` (record exists but status !== "submitted"). Both arrays required for the two dynamic reminder chips.
+
+[2026-04-06] | Reminder chips were generic and didn't distinguish submission state | Submission Tracking chips: static "Which companies are at risk of missing this period's deadline?", dynamic "Send reminders to companies with no submission" (if noSubmission.length > 0), dynamic "Send reminders to companies with partial submissions" (if partial.length > 0). Never add back "Who hasn't submitted" or "most recently" chips — those are obvious from the page.
+
+---
+
+## Chat Pane — File Attachment
+
+[2026-04-06] | FileUploadZone was a plain function — callers couldn't trigger file open or pass dropped files from outside the component | FileUploadZone is now a forwardRef component exposing `FileUploadZoneHandle` (`handleFiles`, `triggerOpen`). Always use the ref when embedding in ChatInterface for the paperclip button. The `compact` prop hides the drop zone and shows only pending chips.
+
+[2026-04-06] | PortfolioQAPane file attachment doesn't upload to backend — Q&A endpoint doesn't support files | For Q&A pane: files are collected as `qaPendingFiles` (File[]) state and appended as `[Attached: filename]` lines in the sent message text. No actual upload occurs. This is intentional — the icon provides UI consistency without backend scope creep.
+
+---
+
+## Chat Pane — Session Persistence
+
+[2026-04-06] | portfolioMessages state was in ChatPanelExpanded which unmounts when panel closes — messages lost on every close | Lifted to PersistentChatPanel (always mounted), backed by sessionStorage key `pulse_qa_messages_v1`. Lazy initializer reads from sessionStorage on mount; useEffect writes on every change. Cleared by topbar signOut before calling NextAuth signOut. CompanyChat messages are handled server-side (no change needed).
+
+---
+
+## Chat Pane — Auto-collapse
+
+[2026-04-06] | Auto-collapse on navigation (pathname useEffect in PersistentChatPanel) was removed per user request | Panel now stays open when navigating between pages. If re-adding collapse behavior in the future, use prevPathnameRef guard to skip mount, and only collapse if the panel was already closed (not force-close on open panels).
+
+---
+
 ## Chat Pane Layout
 
 [2026-04-06] | Chat pane used `position: fixed` rendered outside the flex row, then `sticky` inside the flex row — both caused overlay | Correct pattern: `h-screen flex flex-col` on the outer shell, `shrink-0 z-40` on the topbar wrapper, `flex flex-1 min-h-0` on the content row, `overflow-y-auto` on `<main>`. Panel is a plain flex child: `w-[360px] shrink-0 border-l border-border bg-white flex flex-col overflow-hidden` — no `fixed`, no `sticky`, no `z-index`. Page content scrolls within `<main>`, not the browser window. Never use `sticky` or `fixed` for the chat panel.

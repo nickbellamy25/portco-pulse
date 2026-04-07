@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { MessageSquare, PanelRightClose, Loader2, Send } from "lucide-react";
+import { MessageSquare, PanelRightClose, Loader2, Send, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -64,23 +64,21 @@ export function PersistentChatPanel({
   firmId,
 }: PersistentChatPanelProps) {
   const { chatOpen, toggleChat } = useChatContext();
-  const pathname = usePathname();
-  const prevPathnameRef = useRef<string | null>(null);
+
+  const SESSION_KEY = "pulse_qa_messages_v1";
+  const [portfolioMessages, setPortfolioMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = sessionStorage.getItem("pulse_qa_messages_v1");
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
 
   useEffect(() => {
-    // First run: record initial pathname, don't collapse
-    if (prevPathnameRef.current === null) {
-      prevPathnameRef.current = pathname;
-      return;
-    }
-    // Subsequent runs: collapse if navigated away and panel is open
-    if (prevPathnameRef.current !== pathname) {
-      if (chatOpen) {
-        toggleChat();
-      }
-      prevPathnameRef.current = pathname;
-    }
-  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(portfolioMessages));
+    } catch {}
+  }, [portfolioMessages]);
 
   return (
     <div
@@ -121,6 +119,8 @@ export function PersistentChatPanel({
             userCompanyId={userCompanyId}
             firmId={firmId}
             onCollapse={toggleChat}
+            portfolioMessages={portfolioMessages}
+            setPortfolioMessages={setPortfolioMessages}
           />
         </Suspense>
       )}
@@ -137,6 +137,8 @@ interface ChatPanelExpandedProps {
   userCompanyId: string | null;
   firmId: string | undefined;
   onCollapse: () => void;
+  portfolioMessages: Array<{ role: "user" | "assistant"; content: string }>;
+  setPortfolioMessages: React.Dispatch<React.SetStateAction<Array<{ role: "user" | "assistant"; content: string }>>>;
 }
 
 function ChatPanelExpanded({
@@ -144,12 +146,13 @@ function ChatPanelExpanded({
   userCompanyId,
   firmId,
   onCollapse,
+  portfolioMessages,
+  setPortfolioMessages,
 }: ChatPanelExpandedProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [ctx, setCtx] = useState<ChatCtx>(null);
   const [loading, setLoading] = useState(true);
-  const [portfolioMessages, setPortfolioMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
 
   // Company ID from URL — only honoured on relevant routes
   const companyIdFromUrl: string | null =
@@ -299,10 +302,13 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
   const [outstandingData, setOutstandingData] = useState<{
     periodId: string;
     period: string;
-    outstanding: Array<{ companyId: string; companyName: string }>;
+    noSubmission: Array<{ companyId: string; companyName: string }>;
+    partial: Array<{ companyId: string; companyName: string }>;
   } | null>(null);
-  const [pendingReminder, setPendingReminder] = useState(false);
+  const [pendingReminder, setPendingReminder] = useState<"no_submission" | "partial" | false>(false);
   const [sendingReminders, setSendingReminders] = useState(false);
+  const [qaPendingFiles, setQaPendingFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -315,20 +321,12 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
     fetch("/api/submissions/outstanding")
       .then((r) => r.json())
       .then((data) => {
-        if (data.outstanding && Array.isArray(data.outstanding)) {
+        if (data.noSubmission !== undefined) {
           setOutstandingData(data);
         }
       })
       .catch(() => {});
   }, [pathname]);
-
-  function buildReminderChipLabel(companies: Array<{ companyName: string }>): string {
-    const names = companies.map((c) => c.companyName.split(" ")[0]);
-    if (names.length === 1) return `Send reminder to ${names[0]}`;
-    if (names.length === 2) return `Send reminders to ${names[0]} & ${names[1]}`;
-    if (names.length === 3) return `Send reminders to ${names[0]}, ${names[1]} & ${names[2]}`;
-    return `Send reminders to ${names[0]}, ${names[1]} & ${names.length - 2} more`;
-  }
 
   const chips: string[] = (() => {
     if (pathname === "/dashboard") return [
@@ -338,22 +336,24 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
       "Any active KPI alerts?",
     ];
     if (pathname === "/submissions") {
-      const staticChips = [
-        "Who hasn't submitted this period?",
-        "Which company submitted most recently?",
-      ];
-      if (outstandingData && outstandingData.outstanding.length > 0) {
-        staticChips.push(buildReminderChipLabel(outstandingData.outstanding));
+      const result: string[] = ["Which companies are at risk of missing this period's deadline?"];
+      if (outstandingData && outstandingData.noSubmission.length > 0) {
+        result.push("Send reminders to companies with no submission");
       }
-      return staticChips;
+      if (outstandingData && outstandingData.partial.length > 0) {
+        result.push("Send reminders to companies with partial submissions");
+      }
+      return result;
     }
     return [];
   })();
 
   const sendMessage = useCallback(
     async (q: string) => {
-      const question = q.trim();
-      if (!question || isLoading) return;
+      const fileLines = qaPendingFiles.map((f) => `[Attached: ${f.name}]`).join("\n");
+    const question = [fileLines, q.trim()].filter(Boolean).join("\n");
+    if (!question || isLoading) return;
+    setQaPendingFiles([]);
 
       setMessages((prev) => [...prev, { role: "user", content: question }]);
       setInput("");
@@ -457,32 +457,42 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
   );
 
   function handleChipClick(chip: string) {
-    if (chip.startsWith("Send reminder")) {
-      // Confirmation flow — don't send to AI
-      if (!outstandingData) return;
-      const names = outstandingData.outstanding.map((c) => c.companyName);
-      const nameStr =
-        names.length === 1
-          ? names[0]
-          : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+    if (chip === "Send reminders to companies with no submission") {
+      if (!outstandingData || outstandingData.noSubmission.length === 0) return;
+      const names = outstandingData.noSubmission.map((c) => c.companyName);
+      const nameStr = names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
       setMessages((prev) => [
         ...prev,
         { role: "user", content: chip },
         { role: "assistant", content: `I'll send submission reminders to ${nameStr}. Confirm?` },
       ]);
-      setPendingReminder(true);
+      setPendingReminder("no_submission");
+    } else if (chip === "Send reminders to companies with partial submissions") {
+      if (!outstandingData || outstandingData.partial.length === 0) return;
+      const names = outstandingData.partial.map((c) => c.companyName);
+      const nameStr = names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: chip },
+        { role: "assistant", content: `I'll send submission reminders to ${nameStr}. Confirm?` },
+      ]);
+      setPendingReminder("partial");
     } else {
       sendMessage(chip);
     }
   }
 
   async function handleConfirmReminder() {
-    if (!outstandingData || !firmId) return;
+    if (!outstandingData || !firmId || pendingReminder === false) return;
+    const companies = pendingReminder === "no_submission" ? outstandingData.noSubmission : outstandingData.partial;
     setPendingReminder(false);
     setSendingReminders(true);
     try {
-      const result = await sendRemindersAction(firmId, outstandingData.periodId);
-      setMessages((prev) => [...prev, { role: "assistant", content: result.message }]);
+      for (const company of companies) {
+        await sendRemindersAction(firmId, outstandingData.periodId, company.companyId);
+      }
+      const count = companies.length;
+      setMessages((prev) => [...prev, { role: "assistant", content: `Sent ${count} reminder${count !== 1 ? "s" : ""}.` }]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -496,6 +506,23 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
   function handleCancelReminder() {
     setPendingReminder(false);
     setMessages((prev) => [...prev, { role: "assistant", content: "Cancelled." }]);
+  }
+
+  function handleQaDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) setQaPendingFiles((prev) => [...prev, ...files]);
+  }
+  function handleQaDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  function handleQaFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      setQaPendingFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+      e.target.value = "";
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -578,7 +605,7 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
       {/* Footer */}
       <div className="shrink-0 border-t border-border px-3 pt-2 pb-2">
 
-        {pendingReminder && (
+        {pendingReminder !== false && (
           <div className="flex gap-2 mb-2">
             <button
               type="button"
@@ -615,7 +642,25 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
           </div>
         )}
 
-        <div className="flex gap-2 items-end">
+        {qaPendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {qaPendingFiles.map((f, i) => (
+              <div key={i} className="flex items-center gap-1 bg-muted border border-border rounded-full px-2.5 py-0.5 text-[11px]">
+                <Paperclip className="h-3 w-3 text-muted-foreground" />
+                <span className="max-w-[100px] truncate">{f.name}</span>
+                <button type="button" onClick={() => setQaPendingFiles((prev) => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-foreground ml-0.5">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleQaFileChange} />
+        <div
+          className="flex gap-2 items-end"
+          onDrop={handleQaDrop}
+          onDragOver={handleQaDragOver}
+        >
           <textarea
             ref={textareaRef}
             value={input}
@@ -626,9 +671,18 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
             rows={2}
             className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            aria-label="Attach file"
+            className="h-9 w-9 shrink-0 flex items-center justify-center rounded-md border border-border hover:bg-muted transition-colors disabled:opacity-40"
+          >
+            <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
           <Button
             size="icon"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || (!input.trim() && qaPendingFiles.length === 0)}
             onClick={() => sendMessage(input)}
             className="h-9 w-9 shrink-0"
           >

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Copy, Plus, ExternalLink, Trash2, X, AlertTriangle, Building2, Pencil, Check, ChevronDown, CheckCircle2, Send, MessageSquare } from "lucide-react";
+import { Copy, Plus, ExternalLink, Trash2, X, AlertTriangle, Building2, Pencil, Check, ChevronDown, CheckCircle2, Send } from "lucide-react";
 import { SettingsNav } from "@/components/layout/settings-nav";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -1777,14 +1777,6 @@ export function CompaniesClient({
             )}
             {selectedCompany && (
               <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                <button
-                  onClick={() => copyToken(selectedCompany)}
-                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-white hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Company Chat
-                </button>
-                <span className="w-px h-4 bg-border mx-1 self-center" />
                 <button
                   onClick={() => { setDeleteConfirmName(""); setDeleteOpen(true); }}
                   className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-red-200 bg-white hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors"

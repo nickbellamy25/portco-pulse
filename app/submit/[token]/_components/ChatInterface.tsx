@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FileUploadZone } from "./FileUploadZone";
+import { FileUploadZone, type FileUploadZoneHandle } from "./FileUploadZone";
 import { ConfirmationSummary } from "./ConfirmationSummary";
 import type { UploadResult } from "@/app/api/upload/route";
 import ReactMarkdown from "react-markdown";
@@ -89,6 +89,7 @@ export function ChatInterface({
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoMessageSentRef = useRef(false);
+  const fileUploadRef = useRef<FileUploadZoneHandle>(null);
 
   const sendMessage = useCallback(async (text: string, uploads: UploadResult[]) => {
     const userText = text.trim();
@@ -529,39 +530,63 @@ export function ChatInterface({
       )}
 
       {/* Input area — always visible */}
-      <div className="border-t border-border px-4 pt-2 pb-3">
+      <div
+        className="border-t border-border px-4 pt-2 pb-3"
+        onDrop={(e) => {
+          e.preventDefault();
+          if (e.dataTransfer.files.length > 0 && !pendingPayload) {
+            fileUploadRef.current?.handleFiles(e.dataTransfer.files);
+          }
+        }}
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+        onDragEnter={(e) => e.preventDefault()}
+        onDragLeave={(e) => e.preventDefault()}
+      >
         <div className="flex flex-col gap-2">
           {!pendingPayload && (
             <FileUploadZone
+              ref={fileUploadRef}
               token={token}
               onUploadComplete={(results) => setPendingUploads((prev) => [...prev, ...results])}
               disabled={isLoading}
               pendingUploads={pendingUploads}
               onRemoveUpload={(i) => setPendingUploads((prev) => prev.filter((_, idx) => idx !== i))}
+              compact
             />
           )}
-            <div className="flex gap-2 items-end">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              placeholder="Message…"
+              rows={2}
+              className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            />
+            {!pendingPayload && (
+              <button
+                type="button"
+                onClick={() => fileUploadRef.current?.triggerOpen()}
                 disabled={isLoading}
-                placeholder="Message…"
-                rows={2}
-                className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-              />
-              <Button
-                size="icon"
-                disabled={isLoading || (!input.trim() && pendingUploads.length === 0)}
-                onClick={() => sendMessage(input, pendingUploads)}
-                className="h-10 w-10 shrink-0"
+                aria-label="Attach file"
+                className="h-10 w-10 shrink-0 flex items-center justify-center rounded-md border border-border hover:bg-muted transition-colors disabled:opacity-40"
               >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </div>
+                <Paperclip className="h-4 w-4 text-muted-foreground" />
+              </button>
+            )}
+            <Button
+              size="icon"
+              disabled={isLoading || (!input.trim() && pendingUploads.length === 0)}
+              onClick={() => sendMessage(input, pendingUploads)}
+              className="h-10 w-10 shrink-0"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
           </div>
         </div>
+      </div>
     </div>
   );
 }

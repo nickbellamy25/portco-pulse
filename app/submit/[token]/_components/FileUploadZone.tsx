@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Paperclip, X, Loader2 } from "lucide-react";
 import type { UploadResult } from "@/app/api/upload/route";
 
@@ -10,6 +10,13 @@ interface Props {
   disabled?: boolean;
   pendingUploads: UploadResult[];
   onRemoveUpload: (index: number) => void;
+  /** When true, hides the drop zone — only pending chips are rendered. */
+  compact?: boolean;
+}
+
+export interface FileUploadZoneHandle {
+  handleFiles: (files: FileList | File[]) => Promise<void>;
+  triggerOpen: () => void;
 }
 
 const ACCEPTED = ".pdf,.xlsx,.xls,.csv,.docx,.doc,.png,.jpg,.jpeg,.tiff";
@@ -33,15 +40,21 @@ function guessMimeFromName(name: string): string {
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
 
-export function FileUploadZone({ token, onUploadComplete, disabled, pendingUploads, onRemoveUpload }: Props) {
+export const FileUploadZone = forwardRef<FileUploadZoneHandle, Props>(function FileUploadZone(
+  { token, onUploadComplete, disabled, pendingUploads, onRemoveUpload, compact = false },
+  ref
+) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  // Prevent the browser from navigating to the dropped file (default browser behaviour,
-  // especially for file types Chrome can't display natively like .xlsx).
-  // Capture phase on window fires before React's synthetic event system.
+  useImperativeHandle(ref, () => ({
+    handleFiles,
+    triggerOpen: () => inputRef.current?.click(),
+  }));
+
+  // Prevent browser from navigating to dropped files
   useEffect(() => {
     const prevent = (e: DragEvent) => {
       e.preventDefault();
@@ -57,8 +70,9 @@ export function FileUploadZone({ token, onUploadComplete, disabled, pendingUploa
     };
   }, []);
 
-  async function handleFiles(files: FileList) {
-    if (pendingUploads.length + files.length > MAX_FILES) {
+  async function handleFiles(files: FileList | File[]) {
+    const fileArray = Array.from(files);
+    if (pendingUploads.length + fileArray.length > MAX_FILES) {
       setError(`Maximum ${MAX_FILES} files per submission.`);
       return;
     }
@@ -66,10 +80,8 @@ export function FileUploadZone({ token, onUploadComplete, disabled, pendingUploa
     setUploading(true);
 
     const results: UploadResult[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of fileArray) {
       try {
-        // Pre-read bytes on the client — more reliable than passing the File
-        // object directly for Windows shell drags (e.g. .xlsx from Explorer).
         const buffer = await file.arrayBuffer();
         const mimeType = file.type || guessMimeFromName(file.name);
         const blob = new Blob([buffer], { type: mimeType });
@@ -122,7 +134,6 @@ export function FileUploadZone({ token, onUploadComplete, disabled, pendingUploa
   }
 
   function handleDragLeave(e: React.DragEvent) {
-    // Only clear if leaving the zone entirely (not a child element)
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setDragging(false);
     }
@@ -152,44 +163,45 @@ export function FileUploadZone({ token, onUploadComplete, disabled, pendingUploa
         </div>
       )}
 
-      {error && (
-        <p className="text-xs text-destructive mb-1">{error}</p>
-      )}
+      {error && <p className="text-xs text-destructive mb-1">{error}</p>}
 
-      {/* Drop zone */}
-      <div
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onClick={() => !disabled && !uploading && inputRef.current?.click()}
-        className={`flex items-center justify-center gap-2 w-full rounded-lg border border-dashed px-4 py-3 text-xs transition-colors cursor-pointer ${
-          dragging
-            ? "border-primary bg-primary/5 text-primary"
-            : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-        } ${disabled || uploading ? "opacity-50 cursor-default" : ""}`}
-      >
-        {uploading ? (
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-        ) : (
-          <Paperclip className="h-4 w-4 shrink-0" />
-        )}
-        <span>
-          {uploading
-            ? "Uploading…"
-            : dragging
-            ? "Drop to attach"
-            : <><span className="font-medium">Attach file</span> or drag and drop</>}
-        </span>
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED}
-          multiple
-          className="hidden"
-          onChange={(e) => e.target.files && handleFiles(e.target.files)}
-        />
-      </div>
+      {/* Hidden file input — always present, drop zone only shown when not compact */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPTED}
+        multiple
+        className="hidden"
+        onChange={(e) => e.target.files && handleFiles(e.target.files)}
+      />
+
+      {!compact && (
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onClick={() => !disabled && !uploading && inputRef.current?.click()}
+          className={`flex items-center justify-center gap-2 w-full rounded-lg border border-dashed px-4 py-3 text-xs transition-colors cursor-pointer ${
+            dragging
+              ? "border-primary bg-primary/5 text-primary"
+              : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+          } ${disabled || uploading ? "opacity-50 cursor-default" : ""}`}
+        >
+          {uploading ? (
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          ) : (
+            <Paperclip className="h-4 w-4 shrink-0" />
+          )}
+          <span>
+            {uploading
+              ? "Uploading…"
+              : dragging
+              ? "Drop to attach"
+              : <><span className="font-medium">Attach file</span> or drag and drop</>}
+          </span>
+        </div>
+      )}
     </div>
   );
-}
+});

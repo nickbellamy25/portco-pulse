@@ -1,6 +1,6 @@
 /**
  * GET /api/submissions/outstanding
- * Returns companies that haven't submitted for the most recent period.
+ * Returns companies broken down by no-submission vs partial for the most recent period.
  * Investor persona only.
  */
 
@@ -30,7 +30,7 @@ export async function GET() {
     .get();
 
   if (!period) {
-    return NextResponse.json({ periodId: null, period: null, outstanding: [] });
+    return NextResponse.json({ periodId: null, period: null, noSubmission: [], partial: [] });
   }
 
   // All active (non-exited) companies for this firm
@@ -45,8 +45,8 @@ export async function GET() {
     )
     .all();
 
-  // For each company, check if there's a submitted submission for this period
-  const outstanding: Array<{ companyId: string; companyName: string }> = [];
+  const noSubmission: Array<{ companyId: string; companyName: string }> = [];
+  const partial: Array<{ companyId: string; companyName: string }> = [];
 
   for (const company of allCompanies) {
     const sub = db
@@ -55,19 +55,20 @@ export async function GET() {
       .where(
         and(
           eq(schema.submissions.companyId, company.id),
-          eq(schema.submissions.periodId, period.id),
-          eq(schema.submissions.status, "submitted")
+          eq(schema.submissions.periodId, period.id)
         )
       )
       .get();
 
     if (!sub) {
-      outstanding.push({ companyId: company.id, companyName: company.name });
+      noSubmission.push({ companyId: company.id, companyName: company.name });
+    } else if (sub.status !== "submitted") {
+      partial.push({ companyId: company.id, companyName: company.name });
     }
   }
 
   // Format period label as "Month YYYY"
-  const periodStart = period.periodStart; // YYYY-MM-DD
+  const periodStart = period.periodStart;
   const [year, month] = periodStart.split("-");
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
@@ -78,6 +79,7 @@ export async function GET() {
   return NextResponse.json({
     periodId: period.id,
     period: periodLabel,
-    outstanding,
+    noSubmission,
+    partial,
   });
 }

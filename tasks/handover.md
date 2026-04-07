@@ -86,6 +86,30 @@ The app is fully functional as a local prototype. All Phase 1 + Phase 2 features
 
 ---
 
+### Session 2026-04-06 (continued) — Chat pane fixes pass 3
+
+Six chat pane fixes:
+
+1. **Removed "Company Chat" button** from company settings page header (`app/(app)/admin/companies/client.tsx`). Was a leftover from old UI.
+
+2. **Paperclip icon inside message input on all pages:**
+   - `FileUploadZone` converted to `forwardRef`, exposes `FileUploadZoneHandle` (`handleFiles`, `triggerOpen`). Added `compact` prop — when true, hides the verbose drop zone and shows only pending chips.
+   - `ChatInterface`: input area now has drag-drop handlers on the outer wrapper, compact FileUploadZone with ref, and a paperclip icon button between the textarea and Send button.
+   - `PortfolioQAPane`: paperclip icon + hidden file input + drag-drop added to input row. Files show as pending chips; names are prepended to message text when sent (no actual upload to Q&A endpoint).
+
+3. **Two dynamic reminder chips on Submission Tracking:**
+   - `/api/submissions/outstanding` now returns `noSubmission` + `partial` arrays instead of a combined `outstanding` array.
+   - Chips: removed "Who hasn't submitted this period?" and "Which company submitted most recently?". Replaced with: "Which companies are at risk of missing this period's deadline?" (static), "Send reminders to companies with no submission" (dynamic), "Send reminders to companies with partial submissions" (dynamic).
+   - Confirmation flow names specific companies; calls `sendRemindersAction` per company.
+
+4. **Removed auto-collapse on navigation** — deleted the `pathname` useEffect from the outer `PersistentChatPanel` function. Panel stays open when navigating.
+
+5. **Persistent chat session across all pages** — `portfolioMessages` lifted from `ChatPanelExpanded` (unmounts on close) to `PersistentChatPanel` (always mounted), backed by `sessionStorage` key `pulse_qa_messages_v1`. Survives panel close/reopen and page navigation. Clears on logout (topbar signOut now calls `sessionStorage.removeItem` first).
+
+6. **Removed Actions column and Remind button** from Submission Tracking periodic table. `handleSendReminders`, `sending` state removed from `submissions/client.tsx`. Reminder functionality now exclusively through Pulse AI chat chips.
+
+---
+
 ## What's next — Phase 3 remaining
 
 1. **Wire company-specific KPIs into chat submission** — custom KPIs added in Company Settings don't appear in the operator's chat submission flow
@@ -106,6 +130,10 @@ The app is fully functional as a local prototype. All Phase 1 + Phase 2 features
 - **Soft-delete for KPIs**: `active=false`, never hard-delete
 - **Seed is source of truth**: Any KPI config change in UI must also be updated in `scripts/seed.ts`
 - **Chat pane width**: 384px fixed (not vw-based)
+- **FileUploadZone**: `forwardRef` with `FileUploadZoneHandle` (`handleFiles`, `triggerOpen`). `compact` prop hides drop zone, shows only pending chips.
+- **Chat session key**: `pulse_qa_messages_v1` in sessionStorage — portfolio Q&A messages persist across panel open/close and navigation; cleared on logout.
+- **Reminder chips**: two dynamic chips (no submission / partial) on /submissions, both confirm before sending, call `sendRemindersAction` per company. Static chip: "Which companies are at risk of missing this period's deadline?"
+- **No auto-collapse**: panel stays open on navigation (previous auto-collapse on route change removed).
 - **Assistant bubbles**: `w-full` (full-width), user bubbles: `max-w-[85%]`
 - **Collapsed tab layout**: `rotate(270deg)` on a horizontal `flex items-center gap-2` row — mirrors expanded header, no writing-mode
 - **Portfolio Q&A response format**: context line → sorted table (all rows ranked) → conclusion only if it adds information not visible in the table

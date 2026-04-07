@@ -44,7 +44,7 @@ function isDocRequiredAndDue(row: SubmissionTrackingRow, key: string, periodMont
 }
 
 import type { Period } from "@/lib/db/schema";
-import { sendRemindersAction, sendPlanRemindersAction, markOnboardingCompleteAction } from "./actions";
+import { sendPlanRemindersAction, markOnboardingCompleteAction } from "./actions";
 import { FilterBarUrl } from "@/components/filters/filter-bar-url";
 import {
   Dialog,
@@ -317,7 +317,6 @@ export function SubmissionTrackingClient({
   );
 
   const [activeView, setActiveView] = useState<"periodic" | "annual" | "onboarding">("periodic");
-  const [sending, setSending] = useState<string | null>(null);
   const [sendingPlan, setSendingPlan] = useState<string | null>(null);
   const [confirmCompleteId, setConfirmCompleteId] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -338,18 +337,6 @@ export function SubmissionTrackingClient({
       toast.error("Failed to mark complete.");
     } finally {
       setCompleting(false);
-    }
-  }
-
-async function handleSendReminders(companyId: string) {
-    setSending(companyId);
-    try {
-      const result = await sendRemindersAction(firmId, selectedPeriodId, companyId);
-      toast.success(result.message);
-    } catch {
-      toast.error("Failed to send reminder. Check email configuration.");
-    } finally {
-      setSending(null);
     }
   }
 
@@ -467,7 +454,6 @@ async function handleSendReminders(companyId: string) {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground" style={{ minWidth: "240px" }}>Company</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground" style={{ minWidth: "200px" }}>Status</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground" style={{ minWidth: "170px" }}>Source Files</th>
-                {!isOperator && <th className="text-left px-4 py-3 font-medium text-muted-foreground" style={{ minWidth: "140px" }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -501,22 +487,6 @@ async function handleSendReminders(companyId: string) {
                       kpisAgreed={row.status === "submitted" || row.status === "partial"}
                     />
                   </td>
-                  {!isOperator && (
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {row.status !== "submitted" && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleSendReminders(row.companyId); }}
-                            disabled={sending === row.companyId}
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30"
-                          >
-                            <Mail className="h-3 w-3" />
-                            {sending === row.companyId ? "Sending..." : "Remind"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  )}
                 </tr>
               ))}
             </tbody>

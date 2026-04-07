@@ -2,7 +2,7 @@
 
 ## Current state (as of 2026-04-06)
 
-The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. This session focused on chat pane polish and system prompt quality.
+The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is partially done. This session focused entirely on Pulse AI chat pane quality: system prompt improvements, response format, collapsed tab layout, contextual chips, session persistence, and notification routing.
 
 ---
 
@@ -43,41 +43,43 @@ The app is fully functional as a local prototype. All Phase 1 + Phase 2 features
 - Seeded with 8 PE companies + 1 independent operator, Jan 2023 – Feb 2026 history
 - `pnpm db:reset` is the only command needed
 
-### Session 2026-04-06 (continued) — Chat pane features
-- Contextual prompt chips: built for PortfolioQAPane (Dashboard: 4 chips, Submissions: 3 chips) and CompanyChat (3 company-specific chips using company name)
-- Portfolio Q&A session persistence: lifted messages state to ChatPanelExpanded so conversation survives navigation between pages
-- Notification routing fix: firm users clicking operator submission/onboard links are redirected to /submissions instead of the operator chat UI
-- ChatInterface: added `autoMessage` prop for chip-triggered sends
+### Session 2026-04-06 — Pulse AI chat pane polish (full session)
 
-### Session 2026-04-06 (this session) — Chat pane polish
-- Fixed three outstanding chat pane issues: zoom root cause (`zoom: 0.85` removed from `app/layout.tsx`), Ask AI tab styling (inline styles to force white bg), duplicate hint text removed from `PortfolioQAPane`
-- Removed textarea placeholder from `PortfolioQAPane`, added "Message..." placeholder
-- Chat pane width: 38vw → 320px → 384px (final)
-- Renamed tab label "Ask AI" → "Pulse AI"
-- Added "Pulse AI" text + green icon to expanded pane header
-- Fixed assistant message bubble: `w-full overflow-x-auto` so table backgrounds fill full width (was `max-w-[85%]`)
-- Portfolio Q&A system prompt improvements:
-  - Consistency rule: written summary must match the table/numbers
-  - No narration rule: never say "wait", "actually", "correcting" — silently fix and present final answer only
-- Strengthened CLAUDE.md session habits: "without being asked" + "mandatory, not optional" on three rules
-- App committed to GitHub throughout session
+**System prompt quality (`lib/chat/system-prompt.ts`):**
+- Response format restructured: context line → table → conclusion (never open with declarative winner)
+- Full table sorted by relevant metric (all rows ranked, not just winner moved to top)
+- Bold column headers + bold most-relevant row in all comparison tables
+- Conclusion omitted when the bold row makes the answer self-evident
+- No-narration rule: never say "wait", "actually", "correcting" — present final answer only
+- Compute-first rule: derive answer from data before writing — opening must match conclusion
+
+**Collapsed tab layout:**
+- Multiple approaches tried (writing-mode, rotation combos). Final solution: render icon + "Pulse AI" text as a normal horizontal flex row (mirroring the expanded header exactly), then rotate the whole container `rotate(270deg)` as a single unit. No writing-mode involved.
+
+**Contextual prompt chips:**
+- Built in `PortfolioQAPane`: Dashboard (4 chips), Submissions (3 chips)
+- Built in `CompanyChat`: 3 company-specific chips using `ctx.companyName`
+- Chips always visible (not just empty state); clicking auto-submits the message
+- `ChatInterface` gained `autoMessage?: string` prop (fires once via ref guard)
+
+**Portfolio Q&A session persistence:**
+- Lifted `messages` state from `PortfolioQAPane` to `ChatPanelExpanded`
+- Conversation survives navigation between pages (Dashboard → Analytics → back)
+
+**Notification routing fix:**
+- Topbar `handleClick` now intercepts `/submit/` and `/onboard/` links
+- Firm-side users are redirected to `/submissions` instead of the operator chat UI
 
 ---
 
-## What's in progress / open items
+## What's next — Phase 3 remaining
 
-### PRIORITY: Portfolio Q&A system prompt — compute-first rule (INTERRUPTED)
-Was mid-task when session ended. Still needs:
-- Add rule to `assemblePortfolioQASystemPrompt`: "When ranking or comparing companies, always compute the correct answer from the data FIRST, then write the response. The opening statement must match the conclusion. Never state a winner before verifying it against the numbers."
-- The AI is still generating an incorrect opening line before self-correcting — the no-narration rule alone is not sufficient; need an explicit compute-first instruction.
-
-### Phase 3 remaining
-1. **Wire company-specific KPIs into chat submission** — custom KPIs added in Company Settings don't appear in the chat submission flow
-2. **Submission Tracking UX review** — detailed review pass; functional but may have rough edges
-3. **Fix variance coloring for lower-is-better KPIs** — positive variance is always green, even for CapEx above plan (should be red)
-4. **Blocklist mode for member access scopes** — only allowlist supported
-5. **Verify chat-submitted data surfaces in Submission Tracking matrix**
-6. **Combined financials edge case** — operator uploads doc covering multiple statement types
+1. **Wire company-specific KPIs into chat submission** — custom KPIs added in Company Settings don't appear in the operator's chat submission flow
+2. **Fix variance coloring for lower-is-better KPIs** — positive variance is always green, even for CapEx above plan (should be red)
+3. **Submission Tracking UX review** — detailed review pass; functional but may have rough edges
+4. **Verify chat-submitted data surfaces in Submission Tracking matrix**
+5. **Combined financials edge case** — operator uploads doc covering multiple statement types
+6. **Blocklist mode for member access scopes** — only allowlist supported
 
 ---
 
@@ -91,6 +93,10 @@ Was mid-task when session ended. Still needs:
 - **Seed is source of truth**: Any KPI config change in UI must also be updated in `scripts/seed.ts`
 - **Chat pane width**: 384px fixed (not vw-based)
 - **Assistant bubbles**: `w-full` (full-width), user bubbles: `max-w-[85%]`
+- **Collapsed tab layout**: `rotate(270deg)` on a horizontal `flex items-center gap-2` row — mirrors expanded header, no writing-mode
+- **Portfolio Q&A response format**: context line → sorted table (all rows ranked) → conclusion only if it adds information not visible in the table
+- **Chips**: always visible (not empty-state only); click auto-submits; `autoMessageSentRef` guards against re-fire on re-render
+- **Notification routing**: `/submit/` and `/onboard/` links are intercepted for firm users and redirected to `/submissions`
 
 ---
 
@@ -113,6 +119,7 @@ Was mid-task when session ended. Still needs:
 | `lib/server/analytics.ts` | All analytics query logic |
 | `lib/server/alerts.ts` | Alert evaluation logic |
 | `lib/server/email.ts` | Email sending (Resend) |
+| `lib/server/notify.ts` | In-app notification creation + link builder |
 | `lib/chat/handler.ts` | Anthropic streaming chat handler |
 | `lib/chat/system-prompt.ts` | Per-company + portfolio Q&A system prompts |
 | `lib/auth/config.ts` | Full auth config (with DB) |
@@ -122,12 +129,7 @@ Was mid-task when session ended. Still needs:
 | `app/(app)/dashboard/page.tsx` | Portfolio Dashboard |
 | `app/(app)/admin/companies/client.tsx` | Company Settings (all tabs) |
 | `app/(app)/admin/settings/client.tsx` | Firm Settings |
-| `app/submit/[token]/_components/ChatInterface.tsx` | Chat submission UI |
+| `app/submit/[token]/_components/ChatInterface.tsx` | Chat submission UI (also used in CompanyChat) |
 | `components/layout/PersistentChatPanel.tsx` | Persistent Pulse AI chat panel |
-
----
-
-## Open questions
-
-- Should company-specific KPIs be wired into chat submission next?
-- Should the old `submission-form.tsx` be deprecated in favour of chat-only?
+| `components/layout/topbar.tsx` | Topbar + notification panel |
+| `components/layout/chat-context.tsx` | Chat open/closed state (localStorage-backed) |

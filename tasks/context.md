@@ -130,3 +130,7 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-06] | PortfolioQAPane messages state was component-local — lost on navigation | Lift messages state to ChatPanelExpanded and pass as props to PortfolioQAPane. This keeps the portfolio chat session alive when user navigates between Dashboard, Analytics, and back.
 
 [2026-04-06] | Chip auto-send in ChatInterface must guard against re-firing on re-render | Use autoMessageSentRef (useRef) to ensure autoMessage only fires once. The ref persists across re-renders unlike a useState flag.
+
+[2026-04-06] | Collapsed tab writing-mode/rotation iterated many times without convergence | FINAL SOLUTION for collapsed vertical tab: render icon + label as a normal horizontal flex row (identical to expanded header: `flex items-center gap-2`), then rotate the entire container with `transform: rotate(270deg)` as a single unit. No writing-mode, no per-element rotation. Any future change to the tab must follow this pattern — do not reintroduce writing-mode.
+
+[2026-04-06] | autoMessage prop in ChatInterface could re-fire on re-render | Guard with `useRef`: `const autoMessageSentRef = useRef(false)`. Set to true before calling sendMessage. Never use useState for this guard — it causes an extra render cycle.

@@ -1223,23 +1223,25 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
 
         <TabsContent value="access">
           {/* Firm Details */}
-          <div className="mb-8 pb-8 border-b border-border">
-            <h3 className="text-sm font-semibold mb-4">Firm Details</h3>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <Label>Firm Name</Label>
-                <Input value={localFirmName} onChange={(e) => setLocalFirmName(e.target.value)} className="mt-1.5" placeholder="e.g. Meridian Capital Partners" />
-                <p className="text-xs text-muted-foreground mt-1">Used in operator chat messages and system prompts.</p>
+          <div className="mb-6 pb-6 border-b border-border">
+            <h3 className="text-sm font-semibold mb-3">Firm Details</h3>
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div className="flex items-center gap-3">
+                <Label className="shrink-0 w-20">Firm Name</Label>
+                <div className="flex-1">
+                  <Input value={localFirmName} onChange={(e) => setLocalFirmName(e.target.value)} placeholder="e.g. Meridian Capital Partners" />
+                </div>
               </div>
-              <div>
-                <Label>From Email</Label>
-                <Input value={localFirmEmail} onChange={(e) => setLocalFirmEmail(e.target.value)} className="mt-1.5" placeholder="reporting@yourdomain.com" />
-                <p className="text-xs text-muted-foreground mt-1">Must be a verified sender domain in your email provider.</p>
+              <div className="flex items-center gap-3">
+                <Label className="shrink-0 w-20">From Email</Label>
+                <div className="flex-1">
+                  <Input value={localFirmEmail} onChange={(e) => setLocalFirmEmail(e.target.value)} placeholder="reporting@yourdomain.com" />
+                </div>
               </div>
             </div>
-            <Button onClick={handleSaveFirmDetails} disabled={firmSaving}>{firmSaving ? "Saving..." : "Save"}</Button>
+            <Button onClick={handleSaveFirmDetails} disabled={firmSaving}>{firmSaving ? "Saving..." : "Save Changes"}</Button>
           </div>
-          <h3 className="text-sm font-semibold mb-4">Team Access</h3>
+          <h3 className="text-sm font-semibold mb-3">Team Access</h3>
           <TeamSection firmId={firmId} currentUserId={currentUserId} initialUsers={firmUsers} allCompanies={allCompanies} userScopes={userScopes} funds={funds} industries={industries} />
         </TabsContent>
 
@@ -1256,16 +1258,12 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
 
         <TabsContent value="kpis">
           <div>
-            <p className="text-xs font-medium bg-muted/50 border border-border rounded-md px-3 py-2 mb-6">
-              KPIs tracked across all portfolio companies. Company-specific KPIs and overrides are set per-company in Company Settings.
-            </p>
             <FirmKpisSection firmId={firmId} initialKpis={kpiDefs} />
           </div>
         </TabsContent>
 
         <TabsContent value="submissions">
           <div className="space-y-8">
-            <p className="text-xs font-medium bg-muted/50 border border-border rounded-md px-3 py-2">Default requirements for all companies. These settings can be overridden per-company in Company Settings.</p>
             {/* Schedule */}
             <div className="space-y-3">
               <div>
@@ -1304,7 +1302,8 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
             </div>
 
             {/* Required Documents */}
-            <div>
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Documents required</h3>
               <FirmDocsSection
                 checked={docsChecked}
                 cadences={docsCadences}

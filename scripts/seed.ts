@@ -14,8 +14,9 @@ import * as schema from "../lib/db/schema";
 import { eq, and, isNull, desc, notInArray } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { mkdirSync, writeFileSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, existsSync, rmSync } from "fs";
 import path from "path";
+import * as XLSX from "xlsx";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -586,7 +587,7 @@ async function seed() {
       timezone: "America/Los_Angeles",
       ragIntent26: null, revMultiplier26: 0, ebitdaMultiplier26: 0,
       investmentDate: "2023-06-14",
-      onboardingStatus: "pending",
+      onboardingStatus: "in_progress",
     },
     {
       slug: "culinary-concepts", name: "Culinary Concepts",
@@ -595,7 +596,7 @@ async function seed() {
       timezone: "America/Chicago",
       ragIntent26: null, revMultiplier26: 0, ebitdaMultiplier26: 0,
       investmentDate: "2023-09-01",
-      onboardingStatus: "in_progress",
+      onboardingStatus: "complete",
     },
   ];
 
@@ -622,6 +623,14 @@ async function seed() {
     db.run(`INSERT INTO onboarding_documents (id, firm_id, company_id, file_name, file_path, uploaded_at) VALUES
       ('${crypto.randomUUID()}', '${firmId}', '${culinaryId}', 'Culinary_Concepts_Overview.pdf', NULL, '2023-09-12 09:14:00'),
       ('${crypto.randomUUID()}', '${firmId}', '${culinaryId}', 'Historical_P&L_2021-2023.xlsx', NULL, '2023-09-15 14:30:00')
+    `);
+  }
+
+  const streamvibeId = companyIds["streamvibe-media"];
+  if (streamvibeId) {
+    db.run(`INSERT INTO onboarding_documents (id, firm_id, company_id, file_name, file_path, uploaded_at) VALUES
+      ('${crypto.randomUUID()}', '${firmId}', '${streamvibeId}', 'StreamVibe_Company_Overview_2025.pdf', NULL, '2026-03-28 10:15:00'),
+      ('${crypto.randomUUID()}', '${firmId}', '${streamvibeId}', 'StreamVibe_Q4_2025_Financials.xlsx', NULL, '2026-03-28 10:22:00')
     `);
   }
 
@@ -791,9 +800,9 @@ async function seed() {
 
   // ── PERIODS ───────────────────────────────────────────────────────────────
   const periodIds: Record<string, string> = {};
-  // Jan 2023 → Feb 2026 (26 months submitted), Mar 2026 (open, nothing submitted)
+  // Jan 2023 → Mar 2026 (27 months submitted), Apr 2026 (open, nothing submitted)
   for (let year = 2023; year <= 2026; year++) {
-    const maxMonth = year === 2026 ? 3 : 12;
+    const maxMonth = year === 2026 ? 4 : 12;
     for (let month = 1; month <= maxMonth; month++) {
       const periodStart = `${year}-${String(month).padStart(2, "0")}-01`;
       const id = crypto.randomUUID();
@@ -814,13 +823,14 @@ async function seed() {
       "2023-03-01","2023-07-01","2023-11-01",
       "2024-02-01","2024-06-01","2024-10-01",
       "2025-03-01","2025-08-01",
+      "2026-03-01",
     ],
     "culinary-concepts": [
       "2023-06-01","2023-10-01",
       "2024-03-01","2024-09-01",
       "2025-05-01",
     ],
-    "evergreen-fitness": ["2023-08-01","2024-07-01"],
+    "evergreen-fitness": ["2023-08-01","2024-07-01","2026-03-01"],
     "optifi-solutions": ["2023-09-01"],
     "apex-industrial-manufacturing": ["2023-05-01"],
     "brighton-healthcare-group": [],
@@ -831,6 +841,10 @@ async function seed() {
   // Which months each company uploads docs (requires requiredDocs to be non-empty)
   // Recent months (2025+): ~90% doc compliance; older: ~65%
   function shouldUploadDocs(slug: string, periodStart: string): boolean {
+    // Force partial submissions (KPIs only, no docs) for demo purposes in March 2026
+    if (periodStart === "2026-03-01" && (slug === "keystone-logistics" || slug === "optifi-solutions")) {
+      return false;
+    }
     const meta = COMPANY_META.find((c) => c.slug === slug)!;
     if (!meta.requiredDocs) return false;
     const year = parseInt(periodStart.slice(0, 4));
@@ -851,9 +865,9 @@ async function seed() {
   // Track actuals for plan computation
   const actualsByCompanyMonth: Record<string, { revenue: number; ebitda: number }> = {};
 
-  // Loop Jan 2023 → Feb 2026 (submitted periods)
+  // Loop Jan 2023 → Mar 2026 (submitted periods)
   for (let year = 2023; year <= 2026; year++) {
-    const maxMonth = year === 2026 ? 2 : 12; // Only Jan+Feb 2026 submitted
+    const maxMonth = year === 2026 ? 3 : 12; // Jan-Mar 2026 submitted
     for (let month = 1; month <= maxMonth; month++) {
       const periodStart = `${year}-${String(month).padStart(2, "0")}-01`;
       const periodId = periodIds[periodStart];
@@ -885,7 +899,21 @@ async function seed() {
 
         // Create submission
         const submissionId = crypto.randomUUID();
-        const submittedAt = `${year}-${String(month + 1 > 12 ? 1 : month + 1).padStart(2, "0")}-15T10:00:00`;
+        let submittedAt: string;
+        if (year === 2026 && month === 3) {
+          // March 2026 — came in early April for a realistic demo (today is 2026-04-07)
+          const earlyAprilDates: Record<string, string> = {
+            "veridian-software": "2026-04-02",
+            "brighton-healthcare-group": "2026-04-02",
+            "apex-industrial-manufacturing": "2026-04-03",
+            "optifi-solutions": "2026-04-04",
+            "keystone-logistics": "2026-04-04",
+            "culinary-concepts": "2026-04-05",
+          };
+          submittedAt = `${earlyAprilDates[slug] ?? "2026-04-03"}T10:00:00`;
+        } else {
+          submittedAt = `${year}-${String(month + 1 > 12 ? 1 : month + 1).padStart(2, "0")}-15T10:00:00`;
+        }
         const opUserId = opUserIds[slug] ?? adminUserId;
 
         db.insert(schema.submissions).values({
@@ -1105,6 +1133,43 @@ async function seed() {
       if (v !== null) insertPlanValue(kpiDefIds["employee_turnover_rate"]!, r(v * 0.93, 1), null, null);
     }
 
+    // ── Annual summary values (periodMonth null) for monthly + quarterly KPIs ───
+    // These are needed for the plan completeness check which looks for periodMonth=null entries.
+    // Revenue, EBITDA, CapEx, OCF: sum of 12 monthly values
+    // Gross Margin: average of 12 monthly values
+    // Cash Balance: December value (end of year)
+    // Headcount: Q4 value (end of year)
+    // Churn Rate: Q4 value (end of year)
+
+    let annualRevSum = 0, annualGmSum = 0, annualEbitdaSum = 0, annualCapexSum = 0, annualOcfSum = 0;
+    let decCash = 0;
+    for (let m = 1; m <= 12; m++) {
+      const idx = baseYearOffset + (m - 1);
+      annualRevSum += profile.revenue(idx) * cfg.revMult;
+      annualGmSum += profile.grossMarginPct(idx);
+      annualEbitdaSum += profile.revenue(idx) * (profile.ebitdaMarginPct(idx) / 100) * cfg.ebitdaMult;
+      annualCapexSum += profile.capex(idx) * capexMult;
+      annualOcfSum += profile.ocf(idx) * cfg.ebitdaMult;
+      if (m === 12) decCash = profile.cashBalance(idx) * cashMult;
+    }
+
+    insertPlanValue(kpiDefIds["revenue"]!, r(annualRevSum), null, null);
+    insertPlanValue(kpiDefIds["gross_margin"]!, r(annualGmSum / 12, 1), null, null);
+    insertPlanValue(kpiDefIds["ebitda"]!, r(annualEbitdaSum), null, null);
+    insertPlanValue(kpiDefIds["cash_balance"]!, r(decCash), null, null);
+    insertPlanValue(kpiDefIds["capex"]!, r(annualCapexSum), null, null);
+    insertPlanValue(kpiDefIds["operating_cash_flow"]!, r(annualOcfSum), null, null);
+
+    // Headcount: use Q4 (last quarter) value
+    const q4Idx = baseYearOffset + 11; // December
+    insertPlanValue(kpiDefIds["headcount"]!, profile.headcount(q4Idx), null, null);
+
+    // Churn rate: use Q4 value if available
+    if (profile.churnRate) {
+      const churnVal = profile.churnRate(q4Idx);
+      if (churnVal !== null) insertPlanValue(kpiDefIds["churn_rate"]!, r(churnVal * 0.95, 1), null, null);
+    }
+
     return planId;
   }
 
@@ -1165,40 +1230,59 @@ async function seed() {
 
   // FY2026 Plans — targets designed to produce specific RAG outcomes
   for (const cfg of [
-    { slug: "apex-industrial-manufacturing", revMult: 1.02, ebitdaMult: 1.03, version: 1, hasRevision: false,
+    { slug: "apex-industrial-manufacturing", revMult: 1.02, ebitdaMult: 1.03, version: 1, hasRevision: false, skipAnnual: undefined as string[] | undefined,
       note: "FY2026 plan assumes 4% volume growth driven by two new OEM contracts. Maintenance capex front-loaded in Q1.",
       investorNote: "Conservative plan vs mgmt's initial ask of 8% growth. Revenue on track, EBITDA slightly ahead of plan month-to-date.",
       revComment: "Target looks achievable. Comfortable with this number.", ebitdaComment: undefined },
-    { slug: "brighton-healthcare-group", revMult: 0.96, ebitdaMult: 0.94, version: 1, hasRevision: false,
+    { slug: "brighton-healthcare-group", revMult: 0.96, ebitdaMult: 0.94, version: 1, hasRevision: false, skipAnnual: undefined as string[] | undefined,
       note: "FY2026 plan assumes 3% census growth and continued payer mix improvement. New wing fully ramped from Jan.",
       investorNote: "Running ahead of plan on payer mix. EBITDA margin expansion is ahead of schedule. Strong start to year.",
       revComment: "Monthly targets reflect census seasonality and payer mix ramp.", ebitdaComment: undefined },
     { slug: "keystone-logistics", revMult: 1.10, ebitdaMult: 1.16, version: 1, hasRevision: true,
+      skipAnnual: ["nps_score", "employee_turnover_rate"] as string[],
       note: "Plan reflects new contract with Midwest Distribution Co. adding ~$2.2M in revenue. Fuel cost assumptions at $3.85/gallon avg.",
       investorNote: "Fuel headwind is the story — diesel running $4.20 vs $3.85 plan. EBITDA at risk without carrier pass-through. Watching closely.",
       revComment: "Slightly aggressive — fuel pass-through timeline uncertain.",
       ebitdaComment: "Margin target depends on fuel assumption. Risk to downside." },
-    { slug: "veridian-software", revMult: 0.94, ebitdaMult: 0.92, version: 1, hasRevision: false,
+    { slug: "veridian-software", revMult: 0.94, ebitdaMult: 0.92, version: 1, hasRevision: false, skipAnnual: undefined as string[] | undefined,
       note: "ARR target of $18.4M. Plan built bottom-up by product line. Two large enterprise deals in pipeline not included in base case.",
       investorNote: "Beating plan on ARR. Two enterprise deals closed in Feb not in base case — running above plan already. EBITDA margin expansion ahead of budget.",
       revComment: "Monthly targets reflect SaaS ramp. Upside from 2 enterprise deals not included.", ebitdaComment: undefined },
     { slug: "evergreen-fitness", revMult: 1.26, ebitdaMult: 1.40, version: 1, hasRevision: false,
+      skipAnnual: ["capex", "operating_cash_flow"] as string[],
       note: "Ambitious growth plan: 3 new club openings in H1 targeting 12% membership growth. Pre-opening costs front-loaded in Q1–Q2.",
       investorNote: "Club openings behind schedule — 2 of 3 slipped to Q3. Revenue significantly behind plan. EBITDA heavily impacted by pre-opening costs with no offsetting revenue. Need updated forecast from mgmt.",
       revComment: "Significantly above current trajectory — needs mid-year reset if trend continues.",
       ebitdaComment: "Pre-opening costs will create a large Q1-Q2 drag. Monitor monthly." },
     { slug: "optifi-solutions", revMult: 1.08, ebitdaMult: 1.11, version: 1, hasRevision: false,
+      skipAnnual: ["cash_balance", "headcount", "employee_turnover_rate"] as string[],
       note: "Plan targets 15% AUM growth through new institutional channel launched in Q4 2025. Headcount +6 in sales.",
       investorNote: "New institutional channel slower to ramp than expected. Revenue recognition timing creating a gap. Should normalize in Q2.",
       revComment: "Monitor closely — slightly aggressive vs current run-rate.", ebitdaComment: undefined },
   ]) {
-    insertPlan({
+    const planId2026 = insertPlan({
       slug: cfg.slug, fiscalYear: 2026, version: cfg.version,
       submittedAt: "2026-01-28T16:00:00",
       note: cfg.note, investorNote: cfg.investorNote,
       revMult: cfg.revMult, ebitdaMult: cfg.ebitdaMult,
       revComment: cfg.revComment, ebitdaComment: cfg.ebitdaComment,
     });
+
+    // Remove annual targets for specific KPIs to create "Partial" plan status
+    if (cfg.skipAnnual && planId2026) {
+      for (const kpiKey of cfg.skipAnnual) {
+        const defId = kpiDefIds[kpiKey];
+        if (defId) {
+          db.delete(schema.kpiPlanValues)
+            .where(and(
+              eq(schema.kpiPlanValues.planId, planId2026),
+              eq(schema.kpiPlanValues.kpiDefinitionId, defId),
+              isNull(schema.kpiPlanValues.periodMonth)
+            ))
+            .run();
+        }
+      }
+    }
 
     // Keystone v2: revised after Q1 — same revenue, EBITDA trimmed 8%
     if (cfg.hasRevision) {
@@ -1318,6 +1402,52 @@ async function seed() {
         { key: "revenue", investorNote: "Revenue recognition lag understood. AUM growing faster than revenue line suggests — Q2 should normalize. Comfortable holding amber." },
       ],
     },
+    // March 2026 annotations
+    {
+      slug: "apex-industrial-manufacturing", periodStart: "2026-03-01",
+      submissionNote: "Q1 close — strong month. Production fully recovered after February maintenance shutdown. OEM backlog orders shipped as planned.",
+      kpiAnnotations: [
+        { key: "revenue", note: "February backlog orders shipped in March as expected. OEM run-rate normalized.", investorNote: "Excellent Q1 close. Full maintenance recovery — no lasting impact. OEM contract pipeline adding Q2 upside." },
+        { key: "ebitda", investorNote: "Q1 EBITDA tracking ahead of plan. Margin expansion on track. No concerns heading into Q2." },
+      ],
+    },
+    {
+      slug: "keystone-logistics", periodStart: "2026-03-01",
+      submissionNote: "KPIs submitted. Financial documents pending CFO sign-off on fuel surcharge restatement — to be uploaded by April 10.",
+      kpiAnnotations: [
+        { key: "gross_margin", investorNote: "Partial submission — docs pending. Carrier pass-through effective April 1 should help Q2 margin. Watching closely." },
+        { key: "operating_cash_flow", note: "OCF recovering from Q1 lease deposit impact. Carrier pass-through pricing now in place from April 1.", investorNote: "Pass-through in place. Expect OCF and margin improvement from Q2 onwards. March was the trough." },
+      ],
+    },
+    {
+      slug: "veridian-software", periodStart: "2026-03-01",
+      submissionNote: "Q1 close. Exceptional quarter — three enterprise deals closed in Q1 totaling $1.2M in new ARR. Ahead of plan across all metrics.",
+      kpiAnnotations: [
+        { key: "revenue", note: "Includes $420K recognized revenue from two multi-year enterprise contracts closed late March.", investorNote: "Q1 ARR beat is outstanding. Pipeline for Q2 has 4 enterprise deals in final stages. Very bullish on 2026 full year." },
+        { key: "ebitda", investorNote: "EBITDA margin expanding ahead of plan. Q1 EBITDA significantly above budget. Best quarter since investment." },
+      ],
+    },
+    {
+      slug: "brighton-healthcare-group", periodStart: "2026-03-01",
+      submissionNote: "Strong Q1 close. Census fully recovered in March after February flu season dip; payer mix held favorable throughout.",
+      kpiAnnotations: [
+        { key: "revenue", investorNote: "Solid Q1. Revenue and EBITDA both above plan. Payer mix improvement is structural — ahead of original thesis timeline." },
+      ],
+    },
+    {
+      slug: "optifi-solutions", periodStart: "2026-03-01",
+      submissionNote: "Institutional mandates from February now generating recognized revenue. KPIs submitted; fund statements to follow once finalized.",
+      kpiAnnotations: [
+        { key: "revenue", note: "Revenue recognition from February institutional mandates flowing through as expected.", investorNote: "Revenue trajectory improving as expected. Docs pending sign-off. Comfortable holding amber — Q2 will show full channel contribution." },
+      ],
+    },
+    {
+      slug: "culinary-concepts", periodStart: "2026-03-01",
+      submissionNote: "First monthly submission following completion of onboarding. March actuals solid — spring dining season starting well.",
+      kpiAnnotations: [
+        { key: "revenue", note: "Same-store sales up 3.2% vs prior year. Spring season has started strongly.", investorNote: "First clean submission post-onboarding. Revenue and margins look healthy. Will configure required docs and 2026 plan before Q2 submission." },
+      ],
+    },
   ];
 
   for (const ann of annotations) {
@@ -1349,6 +1479,136 @@ async function seed() {
     }
   }
   console.log("Added operator notes and investor annotations");
+
+  // ── SEED NOTIFICATIONS ────────────────────────────────────────────────────────
+  // Create realistic notifications for the admin and member users
+  const notifRecords = [
+    // UNREAD — recent March 2026 submissions (came in April 2-5)
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "submission_received", isRead: 0,
+      title: "Apex Industrial submitted Mar 2026",
+      body: "John Davis submitted March 2026 KPIs and financial documents.",
+      linkUrl: `/analytics?company=${companyIds["apex-industrial-manufacturing"]}&period=2026-03&view=detail`,
+      companyId: companyIds["apex-industrial-manufacturing"], periodMonth: "2026-03",
+      createdAt: "2026-04-03T10:02:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "submission_received", isRead: 0,
+      title: "Veridian Software submitted Mar 2026",
+      body: "Rachel Park submitted March 2026 data. Enterprise Q1 close — ahead of plan.",
+      linkUrl: `/analytics?company=${companyIds["veridian-software"]}&period=2026-03&view=detail`,
+      companyId: companyIds["veridian-software"], periodMonth: "2026-03",
+      createdAt: "2026-04-02T14:30:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "submission_received", isRead: 0,
+      title: "Brighton Healthcare submitted Mar 2026",
+      body: "Emily White submitted March 2026 KPIs and all required documents.",
+      linkUrl: `/analytics?company=${companyIds["brighton-healthcare-group"]}&period=2026-03&view=detail`,
+      companyId: companyIds["brighton-healthcare-group"], periodMonth: "2026-03",
+      createdAt: "2026-04-02T09:15:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "submission_received", isRead: 0,
+      title: "Keystone Logistics submitted Mar 2026 (partial)",
+      body: "Mike Johnson submitted March 2026 KPIs. Financial documents pending — expected by April 10.",
+      linkUrl: `/analytics?company=${companyIds["keystone-logistics"]}&period=2026-03&view=detail`,
+      companyId: companyIds["keystone-logistics"], periodMonth: "2026-03",
+      createdAt: "2026-04-04T11:20:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "submission_received", isRead: 0,
+      title: "OptiFi Solutions submitted Mar 2026 (partial)",
+      body: "Priya Sharma submitted March 2026 KPIs. Fund statements pending CFO review.",
+      linkUrl: `/analytics?company=${companyIds["optifi-solutions"]}&period=2026-03&view=detail`,
+      companyId: companyIds["optifi-solutions"], periodMonth: "2026-03",
+      createdAt: "2026-04-04T15:45:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "submission_received", isRead: 0,
+      title: "Culinary Concepts submitted Mar 2026",
+      body: "First submission following onboarding completion. March actuals submitted.",
+      linkUrl: `/analytics?company=${companyIds["culinary-concepts"]}&period=2026-03&view=detail`,
+      companyId: companyIds["culinary-concepts"], periodMonth: "2026-03",
+      createdAt: "2026-04-05T09:00:00",
+    },
+    // UNREAD — RAG alerts
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "rag_alert", isRead: 0,
+      title: "Evergreen Fitness: EBITDA off track",
+      body: "EBITDA significantly below plan in Feb 2026. Pre-opening costs with no offsetting revenue from delayed club openings.",
+      linkUrl: `/analytics?company=${companyIds["evergreen-fitness"]}&period=2026-02&view=detail`,
+      companyId: companyIds["evergreen-fitness"], periodMonth: "2026-02",
+      createdAt: "2026-04-01T08:00:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "rag_alert", isRead: 0,
+      title: "Keystone Logistics: gross margin at risk",
+      body: "Gross margin running below plan in Mar 2026. Fuel headwind persisting despite carrier pass-through discussions.",
+      linkUrl: `/analytics?company=${companyIds["keystone-logistics"]}&period=2026-03&view=detail`,
+      companyId: companyIds["keystone-logistics"], periodMonth: "2026-03",
+      createdAt: "2026-04-04T11:21:00",
+    },
+    // READ — older items
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "monthly_digest", isRead: 1,
+      title: "Portfolio digest — March 2026",
+      body: "6 of 8 companies submitted for March. 2 alerts active (Evergreen, Keystone). Veridian and Brighton ahead of plan.",
+      linkUrl: `/dashboard`,
+      companyId: null, periodMonth: "2026-03",
+      createdAt: "2026-04-01T07:00:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "submission_received", isRead: 1,
+      title: "Culinary Concepts onboarding complete",
+      body: "Culinary Concepts has completed their platform onboarding. Historical data now available in Analytics.",
+      linkUrl: `/analytics?company=${companyIds["culinary-concepts"]}&view=detail`,
+      companyId: companyIds["culinary-concepts"], periodMonth: null,
+      createdAt: "2026-03-20T14:00:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "plan_submitted", isRead: 1,
+      title: "Keystone Logistics submitted revised FY2026 plan",
+      body: "Revised FY2026 plan submitted. Revenue maintained; EBITDA trimmed 8% to reflect fuel headwind at $4.20/gallon.",
+      linkUrl: `/analytics?company=${companyIds["keystone-logistics"]}&view=detail`,
+      companyId: companyIds["keystone-logistics"], periodMonth: null,
+      createdAt: "2026-03-15T11:35:00",
+    },
+    {
+      id: crypto.randomUUID(), firmId, userId: adminUserId,
+      eventType: "onboarding_request", isRead: 1,
+      title: "StreamVibe Media — onboarding in progress",
+      body: "StreamVibe Media has uploaded initial documents. Onboarding in progress — historical data submission expected within 2 weeks.",
+      linkUrl: `/submissions`,
+      companyId: companyIds["streamvibe-media"], periodMonth: null,
+      createdAt: "2026-03-28T10:25:00",
+    },
+  ];
+
+  // Duplicate all notifications for the member user as well
+  const allNotifRecords = [
+    ...notifRecords,
+    ...notifRecords.map(n => ({ ...n, id: crypto.randomUUID(), userId: memberId })),
+  ];
+
+  for (const n of allNotifRecords) {
+    db.run(
+      `INSERT INTO notifications (id, firm_id, user_id, event_type, title, body, link_url, company_id, period_month, is_read, created_at)
+       VALUES ('${n.id}', '${n.firmId}', '${n.userId}', '${n.eventType}', '${n.title.replace(/'/g, "''")}', '${n.body.replace(/'/g, "''")}', ${n.linkUrl ? `'${n.linkUrl}'` : 'NULL'}, ${n.companyId ? `'${n.companyId}'` : 'NULL'}, ${n.periodMonth ? `'${n.periodMonth}'` : 'NULL'}, ${n.isRead}, '${n.createdAt}')`
+    );
+  }
+  console.log(`Created ${allNotifRecords.length} seed notifications`);
 
   // ── INDEPENDENT OPERATOR (TechVault) ─────────────────────────────────────
   const indFirmId = crypto.randomUUID();
@@ -1404,10 +1664,10 @@ async function seed() {
     name: "Alex Rivera", role: "firm_admin", persona: "independent_operator",
   }).run();
 
-  // Seed 12 months of TechVault data (2025 + Jan-Feb 2026)
+  // Seed 12 months of TechVault data (2025 + Jan-Mar 2026)
   const tvMonths = [
     ...Array.from({ length: 12 }, (_, i) => `2025-${String(i + 1).padStart(2, "0")}-01`),
-    "2026-01-01", "2026-02-01",
+    "2026-01-01", "2026-02-01", "2026-03-01",
   ];
   for (const ps of tvMonths) {
     const periodId = tvPeriodIds[ps];
@@ -1445,12 +1705,518 @@ async function seed() {
   }
   console.log("Created independent operator: TechVault Inc.");
 
+  await createDemoFiles(path.join(process.cwd(), "uploads", "demo"));
+  console.log("Created demo files in uploads/demo/");
+
   console.log("\n✅ Seed complete!");
   console.log("\n📋 Login credentials:");
   console.log("  Firm Admin:        nicholasmbellamy@gmail.com / admin123");
   console.log("  Firm Member:       member@meridiancp.com / member123");
   console.log("  PE Operator:       john.davis@apex-industrial.com / operator123");
   console.log("  Ind. Operator:     cfo@techvault.com / ind123");
+}
+
+// ── DEMO FILE HELPERS ─────────────────────────────────────────────────────────
+
+function buildTextPdf(lines: string[]): Buffer {
+  const streamParts: string[] = ['BT', '/F1 10 Tf'];
+  let first = true;
+  for (const line of lines) {
+    // Escape PDF special chars in parentheses
+    const esc = line.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    if (first) {
+      streamParts.push(`72 750 Td`);
+      first = false;
+    } else {
+      streamParts.push(`0 -14 Td`);
+    }
+    streamParts.push(`(${esc}) Tj`);
+  }
+  streamParts.push('ET');
+  const streamContent = streamParts.join('\n') + '\n';
+  const streamLen = Buffer.byteLength(streamContent, 'ascii');
+
+  const header = '%PDF-1.4\n';
+  const obj1 = `1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n`;
+  const obj2 = `2 0 obj\n<</Type/Pages/Kids[3 0 R]/Count 1>>\nendobj\n`;
+  const obj3 = `3 0 obj\n<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>\nendobj\n`;
+  const obj4 = `4 0 obj\n<</Length ${streamLen}>>\nstream\n${streamContent}endstream\nendobj\n`;
+  const obj5 = `5 0 obj\n<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>\nendobj\n`;
+
+  const body = obj1 + obj2 + obj3 + obj4 + obj5;
+
+  // Compute byte offsets for xref
+  let off = Buffer.byteLength(header, 'ascii');
+  const offsets: number[] = [0]; // offset[0] unused (free entry)
+  for (const obj of [obj1, obj2, obj3, obj4, obj5]) {
+    offsets.push(off);
+    off += Buffer.byteLength(obj, 'ascii');
+  }
+
+  const xrefOffset = Buffer.byteLength(header, 'ascii') + Buffer.byteLength(body, 'ascii');
+
+  // Each xref entry must be exactly 20 bytes: "NNNNNNNNNN GGGGG T \n" (10+1+5+1+1+1+1=20)
+  let xref = `xref\n0 6\n0000000000 65535 f \n`;
+  for (let i = 1; i <= 5; i++) {
+    xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  const trailer = `trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.from(header + body + xref + trailer, 'ascii');
+}
+
+async function createDemoFiles(demoDir: string): Promise<void> {
+  rmSync(demoDir, { recursive: true, force: true });
+  mkdirSync(demoDir, { recursive: true });
+
+  // ── File 1: Apex Industrial TXT (informal ops email) ────────────────────────
+  const apexText = `hey — sending over the april numbers for apex. couple things to flag before you dig in so read through first
+
+top line: revenue came in at $3,592,400 for the month which is a nice bump from march. we had a Q2 OEM order pull-forward of about $45K and the usual spring pickup across the board. honestly feels like momentum is building — pipeline for may looks solid too but dont want to get ahead of ourselves.
+
+margins holding, maybe ticking up a hair from march. gross margin around 24.6% which im happy with given the input cost environment. steel pricing stabilized which helps, and the procurement team renegotiated the fastener contract so thats flowing through now.
+
+EBITDA was $654,200 — clean number, no one-offs this month. no weird accruals or reclasses to worry about. just solid operating performance across the board.
+
+cash balance end of month: $6,571,000. we're in good shape. operating cash flow came in at $356,100 which is solid — collections were strong, only 2 invoices past 60 days and both are with customers we know are good for it (one is literally just a PO mismatch on their end).
+
+capex was $207,800 — this is the H1 equipment upgrade program continuing. bulk of it was the CNC tooling costs for the new product line. should start tapering in june once the install is complete. we also had some smaller tooling replacements on line 3 that were overdue.
+
+headcount: 198 FTE. 2 new line workers started april 12, both came from the trade school pipeline which has been working well for us. still have one open req for a QC lead — been interviewing but havent found the right fit yet. want someone with ISO experience specifically.
+
+customer churn: 2.9%, down a tick from march. that mid-market account i flagged last month (the one that was wavering) is re-engaged — they placed a $180K order in late april so i think we're good there. relationship is back on track.
+
+inventory days: 41, trending down from 43 in march. the supply chain tightening initiative is working — we reduced safety stock on 3 commodity SKUs and improved the kanban triggers on the floor. goal is to get to ~38 by end of Q2.
+
+NPS: 64, basically flat. next full survey is Q3. anecdotally customers seem happy — we had 2 unsolicited referrals this month which is always a good sign.
+
+capacity utilization: 81.2%, up from 79.8%. on-time delivery: 93.4%. both trending the right direction. the new shift scheduling we implemented in march is paying dividends — less overtime, better throughput.
+
+employee turnover: 8.2% annualized — stable. no surprises. the retention bonuses we put in for the senior machinists seem to be working.
+
+CAC: still not tracked / N/A for industrial. we dont really acquire customers in a way where that metric makes sense — its all relationship-driven and RFQ-based. happy to discuss if you want us to track something analogous but i dont think its the right lens for our business.
+
+oh one more thing — the building HVAC unit on the east side of the plant finally died. replacement is $38K, already got 2 quotes. will hit may capex. not a big deal but wanted to flag it.
+
+let me know if you need anything else or want to jump on a call to walk through.
+
+Tim Ashford
+VP Operations
+Apex Industrial Manufacturing`;
+  writeFileSync(path.join(demoDir, "apex_april2026_ops_update.txt"), apexText);
+
+  // ── File 2: Brighton Healthcare XLSX (multi-tab financials) ─────────────────
+  const brightonIS: (string | number | null)[][] = [
+    ["Brighton Healthcare Group"],
+    ["Income Statement"],
+    ["For the Month Ended April 30, 2026", null, "Unaudited"],
+    [],
+    [null, "Apr-26 ($)", "% Rev", "Mar-26 ($)", "% Rev", "Apr-25 ($)", "YoY Var %"],
+    [],
+    ["PATIENT REVENUE"],
+    ["  Inpatient Services", 3745000, "44.0%", 3692000, "44.0%", 3520000, "6.4%"],
+    ["  Outpatient & Ambulatory", 2298000, "27.0%", 2266000, "27.0%", 2162000, "6.3%"],
+    ["  Emergency & Acute Care", 1192000, "14.0%", 1175000, "14.0%", 1124000, "6.0%"],
+    ["  Surgical Procedures", 851000, "10.0%", 839000, "10.0%", 798000, "6.6%"],
+    ["  Ancillary & Diagnostic Services", 426000, "5.0%", 422000, "5.0%", 402000, "6.0%"],
+    ["Total Revenue", 8512000, "100.0%", 8394000, "100.0%", 8006000, "6.3%"],
+    [],
+    ["COST OF SERVICES"],
+    ["  Physician & Clinical Salaries", 1872600, "22.0%", 1846700, "22.0%", 1761300, "6.3%"],
+    ["  Nursing Staff & Agency Labor", 1361900, "16.0%", 1343000, "16.0%", 1281000, "6.3%"],
+    ["  Medical Supplies & Disposables", 596000, "7.0%", 587600, "7.0%", 560400, "6.4%"],
+    ["  Pharmacy & Drug Costs", 510700, "6.0%", 503600, "6.0%", 480400, "6.3%"],
+    ["  Laboratory & Pathology", 425600, "5.0%", 419700, "5.0%", 400300, "6.3%"],
+    ["  Food & Patient Nutrition", 170200, "2.0%", 168000, "2.0%", 160100, "6.3%"],
+    ["  Medical Equipment Lease", 281000, "3.3%", 278000, "3.3%", 268000, "4.9%"],
+    ["Total Cost of Services", 5218000, "61.3%", 5146600, "61.3%", 4911500, "6.2%"],
+    [],
+    ["GROSS PROFIT", 3294000, "38.7%", 3247400, "38.7%", 3094500, "6.4%"],
+    [],
+    ["OPERATING EXPENSES"],
+    ["  Administrative & Support Staff", 681000, "8.0%", 671500, "8.0%", 640500, "6.3%"],
+    ["  Facility Occupancy & Lease", 383000, "4.5%", 383000, "4.6%", 372000, "3.0%"],
+    ["  Insurance & Malpractice", 255400, "3.0%", 252000, "3.0%", 240200, "6.3%"],
+    ["  IT & Medical Information Systems", 170200, "2.0%", 168000, "2.0%", 156000, "9.1%"],
+    ["  Compliance & Regulatory", 127700, "1.5%", 126000, "1.5%", 120100, "6.3%"],
+    ["  Marketing & Community Outreach", 85100, "1.0%", 84000, "1.0%", 80100, "6.2%"],
+    ["  Professional Fees (Legal/Audit)", 127700, "1.5%", 126000, "1.5%", 120100, "6.3%"],
+    ["  Utilities & Environmental", 170200, "2.0%", 168000, "2.0%", 160100, "6.3%"],
+    ["  Staff Training & Credentialing", 85100, "1.0%", 84000, "1.0%", 76100, "11.8%"],
+    ["  Other Operating", 161600, "1.9%", 162400, "1.9%", 152000, "6.3%"],
+    ["Total Operating Expenses", 2247000, "26.4%", 2224900, "26.5%", 2117200, "6.1%"],
+    [],
+    ["EBITDA", 1047000, "12.3%", 1022500, "12.2%", 977300, "7.1%"],
+    [],
+    ["BELOW EBITDA"],
+    ["  Depreciation - Medical Equipment", 185000, "2.2%", 185000, "2.2%", 175000, "5.7%"],
+    ["  Depreciation - Facilities", 92000, "1.1%", 92000, "1.1%", 88000, "4.5%"],
+    ["  Depreciation - IT Systems", 38000, "0.4%", 38000, "0.5%", 35000, "8.6%"],
+    ["Total Depreciation", 315000, null, 315000, null, 298000],
+    [],
+    ["Interest Expense", 42000, null, 43000, null, 48000],
+    ["Net Profit Before Tax", 690000, "8.1%", 664500, "7.9%", 631300, "9.3%"],
+    ["Tax Expense (28%)", 193200, null, 186100],
+    ["NET PROFIT AFTER TAX", 496800, "5.8%", 478400, "5.7%"],
+    [],
+    ["Operational Metrics - April 2026:"],
+    ["  Total Headcount (FTE): 395 | Average Length of Stay: 4.2 days | Bed Occupancy: 87.3%"],
+    ["  NPS Score (Q1-26 survey): 79 | Annualised Employee Turnover: 12.4% | Patient Readmission Rate: 3.1%"],
+  ];
+
+  const brightonBS: (string | number | null)[][] = [
+    ["Brighton Healthcare Group"],
+    ["Balance Sheet"],
+    ["As at April 30, 2026", null, "Unaudited"],
+    [],
+    [null, "Apr-26 ($)", "Mar-26 ($)", "Dec-25 ($)"],
+    [],
+    ["ASSETS"],
+    ["Current Assets"],
+    ["  Cash & Cash Equivalents", 12845000, 12780000, 12600000],
+    ["  Accounts Receivable - Patient", 1842000, 1816000, 1780000],
+    ["  Accounts Receivable - Insurance", 962000, 948000, 920000],
+    ["  Medical Supplies Inventory", 412000, 406000, 395000],
+    ["  Pharmaceutical Inventory", 285000, 278000, 268000],
+    ["  Prepaid Insurance & Licenses", 186000, 192000, 210000],
+    ["  Other Current Assets", 98000, 95000, 88000],
+    ["Total Current Assets", 16630000, 16515000, 16261000],
+    [],
+    ["Non-Current Assets"],
+    ["  Medical Equipment (at cost)", 8420000, 8350000, 8200000],
+    ["  Buildings & Leasehold Improvements", 12800000, 12800000, 12650000],
+    ["  IT Infrastructure & Systems", 1240000, 1240000, 1180000],
+    ["  Accumulated Depreciation", -4865000, -4550000, -3920000],
+    ["  Goodwill - Acquisitions", 2800000, 2800000, 2800000],
+    ["Total Non-Current Assets", 20395000, 20640000, 20910000],
+    [],
+    ["TOTAL ASSETS", 37025000, 37155000, 37171000],
+    [],
+    ["LIABILITIES & EQUITY"],
+    ["Current Liabilities"],
+    ["  Accounts Payable - Suppliers", 1480000, 1520000, 1450000],
+    ["  Accrued Salaries & Benefits", 1245000, 1230000, 1190000],
+    ["  Deferred Revenue - Capitated Contracts", 580000, 565000, 540000],
+    ["  Current Portion of Long-Term Debt", 420000, 420000, 420000],
+    ["  Tax Payable", 248000, 242000, 580000],
+    ["  Other Current Liabilities", 185000, 178000, 168000],
+    ["Total Current Liabilities", 4158000, 4155000, 4348000],
+    [],
+    ["Non-Current Liabilities"],
+    ["  Term Loan Facility", 6200000, 6250000, 6400000],
+    ["  Equipment Finance Leases", 1840000, 1880000, 1960000],
+    ["  Provision for Medical Claims", 420000, 415000, 400000],
+    ["Total Non-Current Liabilities", 8460000, 8545000, 8760000],
+    [],
+    ["TOTAL LIABILITIES", 12618000, 12700000, 13108000],
+    [],
+    ["SHAREHOLDERS' EQUITY"],
+    ["  Issued Capital", 8500000, 8500000, 8500000],
+    ["  Retained Earnings", 15410200, 15476600, 15063000],
+    ["  Current Period Net Profit", 496800, 478400, 500000],
+    ["Total Shareholders' Equity", 24407000, 24455000, 24063000],
+    [],
+    ["TOTAL LIABILITIES & EQUITY", 37025000, 37155000, 37171000],
+  ];
+
+  const brightonCF: (string | number | null)[][] = [
+    ["Brighton Healthcare Group"],
+    ["Cash Flow Statement"],
+    ["For the Month Ended April 30, 2026", null, "Indirect Method | Unaudited"],
+    [],
+    [null, "Apr-26 ($)", "Mar-26 ($)"],
+    [],
+    ["CASH FLOWS FROM OPERATING ACTIVITIES"],
+    ["  Net Profit After Tax", 496800, 478400],
+    ["  Adjustments:"],
+    ["    Depreciation & Amortisation", 315000, 315000],
+    ["  Changes in Working Capital:"],
+    ["    (Inc)/Dec Trade & Insurance Receivables", -40000, -28000],
+    ["    (Inc)/Dec Medical Inventories", -13000, -8000],
+    ["    Inc/(Dec) Accounts Payable", -40000, 35000],
+    ["    Inc/(Dec) Accrued Salaries", 15000, 18000],
+    ["    Inc/(Dec) Deferred Revenue", 15000, 12000],
+    ["    Net Other Working Capital", 25200, 16000],
+    ["  NET CASH FROM OPERATING ACTIVITIES", 774000, 838400],
+    [],
+    ["CASH FLOWS FROM INVESTING ACTIVITIES"],
+    ["  Purchase of Medical Equipment", -178000, -165000],
+    ["  IT Systems & Infrastructure", -30000, -25000],
+    ["  Building Improvements", null, -15000],
+    ["  NET CASH FROM INVESTING ACTIVITIES", -208000, -205000],
+    [],
+    ["CASH FLOWS FROM FINANCING ACTIVITIES"],
+    ["  Repayment of Term Loan", -50000, -50000],
+    ["  Repayment of Equipment Leases", -40000, -40000],
+    ["  Dividends Paid", -411000, null],
+    ["  NET CASH FROM FINANCING ACTIVITIES", -501000, -90000],
+    [],
+    ["NET INCREASE/(DECREASE) IN CASH", 65000, 543400],
+    ["Cash - Opening Balance", 12780000, 12236600],
+    ["CASH - CLOSING BALANCE", 12845000, 12780000],
+  ];
+
+  const brightonWb = XLSX.utils.book_new();
+
+  const isSheet = XLSX.utils.aoa_to_sheet(brightonIS);
+  isSheet['!cols'] = [
+    { wch: 38 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 12 },
+  ];
+  XLSX.utils.book_append_sheet(brightonWb, isSheet, "Income Statement");
+
+  const bsSheet = XLSX.utils.aoa_to_sheet(brightonBS);
+  bsSheet['!cols'] = [
+    { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
+  ];
+  XLSX.utils.book_append_sheet(brightonWb, bsSheet, "Balance Sheet");
+
+  const cfSheet = XLSX.utils.aoa_to_sheet(brightonCF);
+  cfSheet['!cols'] = [
+    { wch: 46 }, { wch: 16 }, { wch: 16 },
+  ];
+  XLSX.utils.book_append_sheet(brightonWb, cfSheet, "Cash Flow");
+
+  const brightonBuf = XLSX.write(brightonWb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  writeFileSync(path.join(demoDir, "brighton_april2026_financials.xlsx"), brightonBuf);
+
+  // ── File 3: Culinary Concepts PDF (P&L) ────────────────────────────────────
+  const culinaryLines = [
+    "Culinary Concepts Group",
+    "Profit & Loss Statement",
+    "For the Month Ended April 30, 2026",
+    "Unaudited | For Internal Distribution Only",
+    " ",
+    "                       Apr-26 ($)  % Rev  Mar-26 ($)  % Rev",
+    " ",
+    "REVENUE",
+    "  Food & Non-Alcoholic   $394,400  66.8%    $381,700  66.8%",
+    "  Alcoholic Beverages    $132,200  22.4%    $128,100  22.4%",
+    "  Private Dining/Events   $63,800  10.8%     $62,200  10.8%",
+    "Total Revenue            $590,400 100.0%    $572,000 100.0%",
+    " ",
+    "COST OF SALES",
+    "  Food Cost              $135,800  23.0%    $131,600  23.0%",
+    "  Beverage Cost Non-Alc   $16,900   2.9%     $16,400   2.9%",
+    "  Beverage Cost Spirits   $48,900   8.3%     $47,500   8.3%",
+    "  Catering Supplies        $1,540   0.3%      $1,490   0.3%",
+    "  Packaging                $1,920   0.3%      $1,860   0.3%",
+    "  Waste & Spoilage           $440   0.1%        $450   0.1%",
+    "Total Cost of Sales      $205,500  34.8%    $199,300  34.8%",
+    " ",
+    "GROSS PROFIT             $384,900  65.2%    $372,700  65.2%",
+    " ",
+    "OPERATING EXPENSES",
+    "  FOH Labour              $80,900  13.7%     $78,400  13.7%",
+    "  Kitchen & BOH Labour    $85,200  14.4%     $82,500  14.4%",
+    "  Management Salaries     $23,400   4.0%     $23,400   4.1%",
+    "  Casual & Event Labour   $12,400   2.1%     $10,800   1.9%",
+    "  Payroll Tax & Insurance $13,200   2.2%     $12,800   2.2%",
+    "  Superannuation           $9,500   1.6%      $9,200   1.6%",
+    "  Rent & Outgoings        $35,400   6.0%     $35,400   6.2%",
+    "  Utilities               $18,800   3.2%     $18,800   3.3%",
+    "  Cleaning & Sanitation    $5,900   1.0%      $5,700   1.0%",
+    "  Repairs & Maintenance    $8,400   1.4%      $8,000   1.4%",
+    "  Marketing                $9,800   1.7%      $9,500   1.7%",
+    "  Delivery Commissions     $7,100   1.2%      $6,800   1.2%",
+    "  Payment Processing       $5,000   0.8%      $4,900   0.9%",
+    "  Insurance                $4,900   0.8%      $4,900   0.9%",
+    "  Other Operating          $10,800   1.8%     $10,300   1.8%",
+    "Total Opex               $330,700  56.0%    $321,400  56.2%",
+    " ",
+    "EBITDA                    $54,200   9.2%     $51,300   9.0%",
+    " ",
+    "  Depreciation            $18,500   3.1%     $18,500   3.2%",
+    "  Interest Expense         $3,100   0.5%      $3,100   0.5%",
+    "  Bank Charges             $1,000   0.2%      $1,000   0.2%",
+    "Net Profit Before Tax     $31,600   5.4%     $29,700   5.2%",
+    "  Tax (25%)                $7,900             $7,425",
+    "NET PROFIT AFTER TAX      $23,700   4.0%     $22,275   3.9%",
+    " ",
+    "---",
+    "Same-Store Sales Growth vs pcp: +3.5%",
+    "Avg Check Size: $41.80 | Covers: ~14,130",
+    "Employee Turnover: 23.2% | NPS: 68",
+    "Inventory Days: 13",
+  ];
+  const culinaryPdf = buildTextPdf(culinaryLines);
+  writeFileSync(path.join(demoDir, "culinary_april2026_pnl.pdf"), culinaryPdf);
+
+  // ── File 4: Pinnacle Retail Group XLSX (3-year historical for onboarding) ──
+  const pinnacleIS: (string | number | null)[][] = [
+    ["Pinnacle Retail Group"],
+    ["Consolidated Income Statement"],
+    ["For the Years Ended December 31", null, "Audited"],
+    [],
+    [null, "FY2025 ($)", "FY2024 ($)", "FY2023 ($)"],
+    [],
+    ["REVENUE"],
+    ["  Retail Sales — In-Store", 17200000, 15040000, 12560000],
+    ["  Retail Sales — E-Commerce", 3010000, 2256000, 1570000],
+    ["  Gift Cards & Loyalty Redemptions", 645000, 564000, 471000],
+    ["  Wholesale & Corporate Sales", 645000, 540000, 399000],
+    ["Total Revenue", 21500000, 18400000, 15000000],
+    [],
+    ["COST OF GOODS SOLD"],
+    ["  Merchandise Purchases", 7740000, 6624000, 5550000],
+    ["  Freight & Distribution", 1075000, 920000, 750000],
+    ["  Warehouse & Fulfilment", 430000, 368000, 300000],
+    ["  Shrinkage & Markdowns", 322500, 276000, 225000],
+    ["Total COGS", 9567500, 8188000, 6825000],
+    [],
+    ["GROSS PROFIT", 11932500, 10212000, 8175000],
+    ["  Gross Margin %", "55.5%", "55.5%", "54.5%"],
+    [],
+    ["OPERATING EXPENSES"],
+    ["  Store Staff Wages & Benefits", 4085000, 3496000, 2850000],
+    ["  Store Occupancy (Rent + CAM)", 2580000, 2208000, 1800000],
+    ["  Management & Head Office Staff", 1290000, 1104000, 900000],
+    ["  Marketing & Customer Acquisition", 860000, 736000, 600000],
+    ["  IT & E-Commerce Platform", 430000, 368000, 285000],
+    ["  Depreciation — Store Fit-outs", 322500, 276000, 225000],
+    ["  Depreciation — IT & Equipment", 129000, 110400, 90000],
+    ["  Insurance", 215000, 184000, 150000],
+    ["  Utilities", 258000, 220800, 180000],
+    ["  Professional Fees (Audit/Legal)", 172000, 147200, 120000],
+    ["  Other Operating Expenses", 215000, 184000, 150000],
+    ["Total Operating Expenses", 10556500, 9034400, 7350000],
+    [],
+    ["EBITDA", 1827500, 1564000, 1190000],
+    ["  EBITDA Margin %", "8.5%", "8.5%", "7.9%"],
+    [],
+    ["  Total Depreciation (above)", 451500, 386400, 315000],
+    ["EBIT", 1376000, 1177600, 875000],
+    [],
+    ["  Interest Expense", 168000, 180000, 195000],
+    ["Net Profit Before Tax", 1208000, 997600, 680000],
+    ["  Income Tax (26%)", 314100, 259400, 176800],
+    ["NET PROFIT AFTER TAX", 893900, 738200, 503200],
+    ["  Net Margin %", "4.2%", "4.0%", "3.4%"],
+    [],
+    ["Supplementary:"],
+    ["  Store Count (end of year)", 14, 12, 10],
+    ["  Same-Store Sales Growth", "+4.2%", "+3.8%", "+3.5%"],
+    ["  Average Transaction Value", "$42", "$39", "$37"],
+    ["  E-Commerce % of Revenue", "14.0%", "12.3%", "10.5%"],
+  ];
+
+  const pinnacleBS: (string | number | null)[][] = [
+    ["Pinnacle Retail Group"],
+    ["Consolidated Balance Sheet"],
+    ["As at December 31", null, "Audited"],
+    [],
+    [null, "FY2025 ($)", "FY2024 ($)", "FY2023 ($)"],
+    [],
+    ["ASSETS"],
+    ["Current Assets"],
+    ["  Cash & Cash Equivalents", 2180000, 1840000, 1520000],
+    ["  Accounts Receivable — Trade", 312000, 268000, 218000],
+    ["  Inventory — Merchandise", 1935000, 1656000, 1350000],
+    ["  Prepaid Rent & Expenses", 186000, 162000, 132000],
+    ["  Other Current Assets", 78000, 66000, 54000],
+    ["Total Current Assets", 4691000, 3992000, 3274000],
+    [],
+    ["Non-Current Assets"],
+    ["  Store Fit-outs & Leasehold (at cost)", 3225000, 2760000, 2250000],
+    ["  Furniture, Fixtures & Equipment", 1075000, 920000, 750000],
+    ["  IT Systems & E-Commerce Platform", 538000, 460000, 375000],
+    ["  Accumulated Depreciation", -1890000, -1438500, -1052100],
+    ["  Right-of-Use Assets (AASB 16)", 4300000, 3680000, 3000000],
+    ["  Goodwill", 450000, 450000, 450000],
+    ["Total Non-Current Assets", 7698000, 6831500, 5772900],
+    [],
+    ["TOTAL ASSETS", 12389000, 10823500, 9046900],
+    [],
+    ["LIABILITIES & EQUITY"],
+    ["Current Liabilities"],
+    ["  Accounts Payable — Suppliers", 1290000, 1104000, 900000],
+    ["  Accrued Wages & Benefits", 322500, 276000, 225000],
+    ["  Gift Card Liability", 215000, 184000, 150000],
+    ["  Lease Liability — Current", 860000, 736000, 600000],
+    ["  Income Tax Payable", 125600, 103800, 70700],
+    ["  Other Current Liabilities", 129000, 110400, 90000],
+    ["Total Current Liabilities", 2942100, 2514200, 2035700],
+    [],
+    ["Non-Current Liabilities"],
+    ["  Lease Liability — Non-Current", 3440000, 2944000, 2400000],
+    ["  Term Loan Facility", 1500000, 1680000, 1860000],
+    ["  Provisions (Make-good)", 215000, 184000, 150000],
+    ["Total Non-Current Liabilities", 5155000, 4808000, 4410000],
+    [],
+    ["TOTAL LIABILITIES", 8097100, 7322200, 6445700],
+    [],
+    ["SHAREHOLDERS' EQUITY"],
+    ["  Issued Capital", 1800000, 1800000, 1800000],
+    ["  Retained Earnings", 2491900, 1701300, 1001200],
+    ["  Accumulated OCI", null, null, -200000],
+    ["Total Shareholders' Equity", 4291900, 3501300, 2601200],
+    [],
+    ["TOTAL LIABILITIES & EQUITY", 12389000, 10823500, 9046900],
+  ];
+
+  const pinnacleCF: (string | number | null)[][] = [
+    ["Pinnacle Retail Group"],
+    ["Consolidated Cash Flow Statement"],
+    ["For the Years Ended December 31", null, "Indirect Method | Audited"],
+    [],
+    [null, "FY2025 ($)", "FY2024 ($)", "FY2023 ($)"],
+    [],
+    ["CASH FLOWS FROM OPERATING ACTIVITIES"],
+    ["  Net Profit After Tax", 893900, 738200, 503200],
+    ["  Adjustments:"],
+    ["    Depreciation & Amortisation", 451500, 386400, 315000],
+    ["    ROU Asset Amortisation", 620000, 530400, 432000],
+    ["  Changes in Working Capital:"],
+    ["    (Inc)/Dec Trade Receivables", -44000, -50000, -28000],
+    ["    (Inc)/Dec Inventory", -279000, -306000, -162000],
+    ["    (Inc)/Dec Prepaid Expenses", -24000, -30000, -18000],
+    ["    Inc/(Dec) Accounts Payable", 186000, 204000, 108000],
+    ["    Inc/(Dec) Accrued Wages", 46500, 51000, 27000],
+    ["    Inc/(Dec) Gift Card Liability", 31000, 34000, 18000],
+    ["    Inc/(Dec) Tax Payable", 21800, 33100, 12700],
+    ["    Net Other Working Capital", 18600, 20400, 10800],
+    ["  NET CASH FROM OPERATING ACTIVITIES", 1922300, 1611500, 1218700],
+    [],
+    ["CASH FLOWS FROM INVESTING ACTIVITIES"],
+    ["  Store Fit-out Capital (new + refurb)", -465000, -510000, -315000],
+    ["  IT & E-Commerce Development", -78000, -85000, -56250],
+    ["  Furniture, Fixtures & Equipment", -155000, -170000, -112500],
+    ["  NET CASH FROM INVESTING ACTIVITIES", -698000, -765000, -483750],
+    [],
+    ["CASH FLOWS FROM FINANCING ACTIVITIES"],
+    ["  Repayment of Term Loan", -180000, -180000, -180000],
+    ["  Lease Payments (Principal)", -620000, -530400, -432000],
+    ["  Dividends Paid", -84300, -16100, null],
+    ["  NET CASH FROM FINANCING ACTIVITIES", -884300, -726500, -612000],
+    [],
+    ["NET INCREASE IN CASH", 340000, 120000, 122950],
+    ["Cash — Opening Balance", 1840000, 1720000, 1397050],
+    ["CASH — CLOSING BALANCE", 2180000, 1840000, 1520000],
+    [],
+    ["Note: FY2023 opening cash balance adjusted for pre-acquisition period."],
+  ];
+
+  const pinnacleWb = XLSX.utils.book_new();
+
+  const pisSheet = XLSX.utils.aoa_to_sheet(pinnacleIS);
+  pisSheet['!cols'] = [
+    { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
+  ];
+  XLSX.utils.book_append_sheet(pinnacleWb, pisSheet, "Income Statement");
+
+  const pbsSheet = XLSX.utils.aoa_to_sheet(pinnacleBS);
+  pbsSheet['!cols'] = [
+    { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
+  ];
+  XLSX.utils.book_append_sheet(pinnacleWb, pbsSheet, "Balance Sheet");
+
+  const pcfSheet = XLSX.utils.aoa_to_sheet(pinnacleCF);
+  pcfSheet['!cols'] = [
+    { wch: 46 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
+  ];
+  XLSX.utils.book_append_sheet(pinnacleWb, pcfSheet, "Cash Flow");
+
+  const pinnacleBuf = XLSX.write(pinnacleWb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  writeFileSync(path.join(demoDir, "pinnacle_retail_historical_financials.xlsx"), pinnacleBuf);
 }
 
 seed().catch(console.error);

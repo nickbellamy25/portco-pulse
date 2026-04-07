@@ -10,6 +10,9 @@ const sqlite = new Database(dbPath);
 // Enable WAL mode for better concurrent read performance
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
+sqlite.pragma("synchronous = NORMAL");
+sqlite.pragma("cache_size = -20000"); // 20MB cache
+sqlite.pragma("temp_store = MEMORY");
 
 export const db = drizzle(sqlite, { schema });
 export type DB = typeof db;

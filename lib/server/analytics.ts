@@ -5,7 +5,7 @@
 
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { eq, and, desc, isNull, ne, inArray, sql } from "drizzle-orm";
+import { eq, and, or, desc, isNull, ne, inArray, sql } from "drizzle-orm";
 import { endOfMonth, addDays } from "date-fns";
 
 // ─── FILTER TYPES & HELPERS ───────────────────────────────────────────────────
@@ -318,51 +318,59 @@ export function getPortfolioDashboardData(firmId: string, filters: CompanyFilter
       )
       .get();
 
-    for (const company of companies) {
-      const sub = db
-        .select()
-        .from(schema.submissions)
-        .where(
-          and(
-            eq(schema.submissions.firmId, firmId),
-            eq(schema.submissions.companyId, company.id),
-            eq(schema.submissions.periodId, dashboardPeriod.id),
-            eq(schema.submissions.status, "submitted")
-          )
+    // Batch: fetch all submitted submissions for this period at once
+    const allSubs = db
+      .select()
+      .from(schema.submissions)
+      .where(
+        and(
+          eq(schema.submissions.firmId, firmId),
+          eq(schema.submissions.periodId, dashboardPeriod.id),
+          eq(schema.submissions.status, "submitted")
         )
-        .get();
+      )
+      .all();
 
-      if (!sub) continue;
+    const subByCompany = new Map(allSubs.map(s => [s.companyId, s]));
+    const subIds = allSubs.map(s => s.id);
 
-      if (ebitdaDef) {
-        const val = db
+    // Batch: fetch all relevant KPI values for those submissions at once
+    const kpiDefIds = [ebitdaDef?.id, cashDef?.id].filter((id): id is string => !!id);
+    const allVals = (subIds.length > 0 && kpiDefIds.length > 0)
+      ? db
           .select()
           .from(schema.kpiValues)
           .where(
             and(
-              eq(schema.kpiValues.submissionId, sub.id),
-              eq(schema.kpiValues.kpiDefinitionId, ebitdaDef.id)
+              inArray(schema.kpiValues.submissionId, subIds),
+              inArray(schema.kpiValues.kpiDefinitionId, kpiDefIds)
             )
           )
-          .get();
-        if (val?.actualNumber !== null && val?.actualNumber !== undefined) {
-          ebitdaByCompany.push({ name: company.name, ebitda: val.actualNumber });
+          .all()
+      : [];
+
+    // Index: submissionId → kpiDefId → value
+    const valIndex = new Map<string, Map<string, number | null>>();
+    for (const v of allVals) {
+      if (!valIndex.has(v.submissionId)) valIndex.set(v.submissionId, new Map());
+      valIndex.get(v.submissionId)!.set(v.kpiDefinitionId, v.actualNumber ?? null);
+    }
+
+    for (const company of companies) {
+      const sub = subByCompany.get(company.id);
+      if (!sub) continue;
+
+      if (ebitdaDef) {
+        const val = valIndex.get(sub.id)?.get(ebitdaDef.id);
+        if (val !== null && val !== undefined) {
+          ebitdaByCompany.push({ name: company.name, ebitda: val });
         }
       }
 
       if (cashDef) {
-        const val = db
-          .select()
-          .from(schema.kpiValues)
-          .where(
-            and(
-              eq(schema.kpiValues.submissionId, sub.id),
-              eq(schema.kpiValues.kpiDefinitionId, cashDef.id)
-            )
-          )
-          .get();
-        if (val?.actualNumber !== null && val?.actualNumber !== undefined) {
-          cashByCompany.push({ name: company.name, cash: val.actualNumber });
+        const val = valIndex.get(sub.id)?.get(cashDef.id);
+        if (val !== null && val !== undefined) {
+          cashByCompany.push({ name: company.name, cash: val });
         }
       }
     }
@@ -1155,16 +1163,29 @@ export function getPlanTracking(
 
     let planStatus: PlanTrackingRow["planStatus"] = "no_submission";
     if (latestSubmitted) {
+      // Get KPI definition IDs that this company has actually reported data for
+      const reportedKpiIds = db
+        .select({ kpiDefinitionId: schema.kpiValues.kpiDefinitionId })
+        .from(schema.kpiValues)
+        .innerJoin(schema.submissions, eq(schema.kpiValues.submissionId, schema.submissions.id))
+        .where(eq(schema.submissions.companyId, company.id))
+        .all();
+
+      const reportedIds = new Set(reportedKpiIds.map(r => r.kpiDefinitionId));
+
+      // Filter active defs to only those the company actually reports
       const activeDefs = db
         .select({ id: schema.kpiDefinitions.id })
         .from(schema.kpiDefinitions)
         .where(
           and(
             eq(schema.kpiDefinitions.firmId, firmId),
-            eq(schema.kpiDefinitions.active, true)
+            eq(schema.kpiDefinitions.active, true),
+            isNull(schema.kpiDefinitions.companyId)
           )
         )
-        .all();
+        .all()
+        .filter(d => reportedIds.has(d.id));
 
       const annualTargets = db
         .select({ kpiDefinitionId: schema.kpiPlanValues.kpiDefinitionId })
@@ -1381,14 +1402,15 @@ export function getCompanyAnalytics(
     valuesBySubmission.get(v.submissionId)!.set(def.key, v.actualNumber ?? null);
   }
 
-  // Get period start for each submission
+  // Get period start for each submission (batch lookup)
   const periodStartById = new Map<string, string>();
+  const uniquePeriodIds = [...new Set(submissionsQuery.map(s => s.periodId))];
+  const periodsForSubs = uniquePeriodIds.length > 0
+    ? db.select().from(schema.periods).where(inArray(schema.periods.id, uniquePeriodIds)).all()
+    : [];
+  const periodByIdMap = new Map(periodsForSubs.map(p => [p.id, p]));
   for (const sub of submissionsQuery) {
-    const period = db
-      .select()
-      .from(schema.periods)
-      .where(eq(schema.periods.id, sub.periodId))
-      .get();
+    const period = periodByIdMap.get(sub.periodId);
     if (period) periodStartById.set(sub.id, period.periodStart);
   }
 
@@ -1506,13 +1528,16 @@ export function getCompanyAnalytics(
     .limit(20)
     .all();
 
+  // Batch-fetch periods for alerts
+  const alertPeriodIds = [...new Set(alertRows.map(a => a.periodId))];
+  const alertPeriods = alertPeriodIds.length > 0
+    ? db.select().from(schema.periods).where(inArray(schema.periods.id, alertPeriodIds)).all()
+    : [];
+  const alertPeriodMap = new Map(alertPeriods.map(p => [p.id, p]));
+
   const activeAlerts = alertRows.map((a) => {
     const def = kpiById[a.kpiDefinitionId];
-    const period = db
-      .select()
-      .from(schema.periods)
-      .where(eq(schema.periods.id, a.periodId))
-      .get();
+    const period = alertPeriodMap.get(a.periodId);
     return {
       id: a.id,
       kpiLabel: def?.label ?? "KPI",

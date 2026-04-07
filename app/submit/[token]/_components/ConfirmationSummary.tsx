@@ -24,6 +24,7 @@ interface Props {
   onCancel?: () => void;
   isSubmitting: boolean;
   isSubmitted?: boolean;
+  detectedDocuments?: string[];
 }
 
 const KPI_SECTIONS: Record<string, string[]> = {
@@ -31,7 +32,7 @@ const KPI_SECTIONS: Record<string, string[]> = {
   Operations: ["customer_acquisition_cost", "headcount", "churn_rate", "inventory_days", "nps_score", "employee_turnover_rate"],
 };
 
-export function ConfirmationSummary({ payload, enabledKpis, onConfirm, onCancel, isSubmitting, isSubmitted = false }: Props) {
+export function ConfirmationSummary({ payload, enabledKpis, onConfirm, onCancel, isSubmitting, isSubmitted = false, detectedDocuments }: Props) {
   const [editableKpis, setEditableKpis] = useState<Record<string, KpiEntry>>(() => ({ ...payload.kpis }));
   const [overallNote, setOverallNote] = useState(payload.overall_note ?? "");
   const [editingCell, setEditingCell] = useState<{ key: string; field: "value" | "note" } | null>(null);
@@ -212,6 +213,21 @@ export function ConfirmationSummary({ payload, enabledKpis, onConfirm, onCancel,
             />
           )}
         </div>
+
+        {!isSubmitted && detectedDocuments && detectedDocuments.length > 0 && (
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+            Documents detected: {detectedDocuments.map(d => {
+              const labels: Record<string, string> = {
+                balance_sheet: "Balance Sheet",
+                income_statement: "Income Statement",
+                cash_flow_statement: "Cash Flow Statement",
+                combined_financials: "Combined Financials",
+                investor_update: "Investor Update",
+              };
+              return labels[d] || d;
+            }).join(", ")}
+          </div>
+        )}
 
         {!isSubmitted && missingKpis.length > 0 && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">

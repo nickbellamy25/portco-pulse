@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChatContext } from "@/components/layout/chat-context";
 import { ChatInterface } from "@/app/submit/[token]/_components/ChatInterface";
+import type { UploadResult } from "@/app/api/upload/route";
 import { sendRemindersAction } from "@/app/(app)/submissions/actions";
 
 // ---------------------------------------------------------------------------
@@ -64,12 +65,22 @@ export function PersistentChatPanel({
   firmId,
 }: PersistentChatPanelProps) {
   const { chatOpen, toggleChat } = useChatContext();
+  const panelPathname = usePathname();
 
   const [panelWidth, setPanelWidth] = useState(384);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
   const [submissionOverrideId, setSubmissionOverrideId] = useState<string | null>(null);
+
+  // Clear submission override when user navigates to a different page
+  const prevPanelPathname = useRef(panelPathname);
+  useEffect(() => {
+    if (prevPanelPathname.current !== panelPathname && submissionOverrideId) {
+      setSubmissionOverrideId(null);
+    }
+    prevPanelPathname.current = panelPathname;
+  }, [panelPathname, submissionOverrideId]);
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -102,9 +113,12 @@ export function PersistentChatPanel({
   });
 
   useEffect(() => {
-    try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(chatMessages));
-    } catch {}
+    const timer = setTimeout(() => {
+      try {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(chatMessages));
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
   }, [chatMessages]);
 
   useEffect(() => {
@@ -205,6 +219,7 @@ function ChatPanelExpanded({
   const [loading, setLoading] = useState(true);
   const [overrideCtx, setOverrideCtx] = useState<CompanyContext | null>(null);
   const [overrideLoading, setOverrideLoading] = useState(false);
+  const [pendingSubmissionFiles, setPendingSubmissionFiles] = useState<File[]>([]);
 
   // Company ID from URL — only honoured on relevant routes
   const companyIdFromUrl: string | null =
@@ -277,6 +292,13 @@ function ChatPanelExpanded({
     setSubmissionOverrideId(null);
     setChatMessages([]);
     setOverrideCtx(null);
+    setPendingSubmissionFiles([]);
+  }
+
+  function handleFileSubmission(files: File[], companyId: string) {
+    setPendingSubmissionFiles(files);
+    setChatMessages([]); // Clear messages so CompanyChat starts fresh
+    setSubmissionOverrideId(companyId);
   }
 
   const showOverride = overrideCtx !== null && targetCompanyId === null;
@@ -299,8 +321,8 @@ function ChatPanelExpanded({
         </button>
       </div>
 
-      {/* Back button when override is active */}
-      {showOverride && (
+      {/* Back button when override is active (hidden during file-submission mode) */}
+      {showOverride && pendingSubmissionFiles.length === 0 && (
         <button
           type="button"
           onClick={handleBackToPortfolio}
@@ -323,6 +345,7 @@ function ChatPanelExpanded({
             onMessagesChange={setChatMessages}
             onSubmitForCompany={null}
             autoSubmit={true}
+            initialFiles={pendingSubmissionFiles}
           />
         ) : ctx === null ? (
           <div className="flex flex-1 items-center justify-center p-4 text-center">
@@ -336,6 +359,7 @@ function ChatPanelExpanded({
             setMessages={setChatMessages}
             firmId={firmId}
             onSubmitForCompany={(id) => setSubmissionOverrideId(id)}
+            onFileSubmission={handleFileSubmission}
             pathname={pathname}
           />
         ) : (
@@ -361,6 +385,7 @@ function CompanyChat({
   onMessagesChange,
   onSubmitForCompany,
   autoSubmit,
+  initialFiles,
 }: {
   ctx: CompanyContext;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -369,8 +394,40 @@ function CompanyChat({
   onMessagesChange: (msgs: any[]) => void;
   onSubmitForCompany: ((companyId: string) => void) | null;
   autoSubmit?: boolean;
+  initialFiles?: File[];
 }) {
   const pathname = usePathname();
+  const [autoUploads, setAutoUploads] = useState<UploadResult[] | undefined>(undefined);
+  const [uploadingFiles, setUploadingFiles] = useState(!!initialFiles && initialFiles.length > 0);
+  const uploadedRef = useRef(false);
+
+  // Upload initialFiles on mount (once), then set autoUploads for ChatInterface
+  useEffect(() => {
+    if (!initialFiles || initialFiles.length === 0 || uploadedRef.current) return;
+    uploadedRef.current = true;
+    setUploadingFiles(true);
+
+    async function uploadAll() {
+      const results: UploadResult[] = [];
+      for (const file of initialFiles!) {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("token", ctx.token);
+          const res = await fetch("/api/upload", { method: "POST", body: formData });
+          if (res.ok) {
+            const result: UploadResult = await res.json();
+            results.push(result);
+          }
+        } catch {
+          // Skip failed uploads silently
+        }
+      }
+      setAutoUploads(results.length > 0 ? results : []);
+      setUploadingFiles(false);
+    }
+    uploadAll();
+  }, [initialFiles, ctx.token]);
 
   const ANALYTICS_CHIP_POOL = [
     `How is ${ctx.companyName} tracking against plan?`,
@@ -382,8 +439,8 @@ function CompanyChat({
   ];
 
   const COMPANY_SETTINGS_FIXED = [
+    "How do company-specific KPI overrides work?",
     `What are ${ctx.companyName}'s current KPI rules?`,
-    `Show ${ctx.companyName}'s current alert thresholds`,
     `Submit this period's data for ${ctx.companyName}`,
   ];
 
@@ -408,9 +465,26 @@ function CompanyChat({
       ? messages
       : ctx.initialMessages && ctx.initialMessages.length > 0
       ? ctx.initialMessages
-      : ctx.openingMessage
-      ? [{ role: "assistant" as const, content: ctx.openingMessage }]
-      : [];
+      : (autoSubmit ? [] : (ctx.openingMessage
+        ? [{ role: "assistant" as const, content: ctx.openingMessage }]
+        : []));
+
+  // If we have initialFiles and they're still uploading, show a loading state
+  if (uploadingFiles) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0 items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <p className="text-xs text-muted-foreground mt-2">Uploading files...</p>
+      </div>
+    );
+  }
+
+  // Build the auto-message: include file context when files were uploaded
+  const autoMessage = autoSubmit
+    ? (autoUploads && autoUploads.length > 0
+        ? `Submitting actuals for the current period. The attached file contains financial data for ${ctx.companyName}. Extract all KPI values from every sheet/section — look for Revenue, Gross Margin, EBITDA, Cash Balance, CapEx, Operating Cash Flow, Headcount, NPS, Employee Turnover, and any other tracked metrics. Include detected financial statement types (Income Statement, Balance Sheet, Cash Flow) in the submission.`
+        : `Submit this period's data for ${ctx.companyName}`)
+    : undefined;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -424,11 +498,12 @@ function CompanyChat({
         submittedByUserId={ctx.userId}
         mode={ctx.chatMode}
         chatEndpoint={ctx.chatEndpoint}
-        promptChips={promptChips}
-        fixedChip={fixedChip}
+        promptChips={autoSubmit ? [] : promptChips}
+        fixedChip={autoSubmit ? undefined : fixedChip}
         onMessagesChange={onMessagesChange}
         compact={true}
-        autoMessage={autoSubmit ? `Submit this period's data for ${ctx.companyName}` : undefined}
+        autoMessage={autoMessage}
+        autoUploads={autoUploads}
       />
     </div>
   );
@@ -448,10 +523,11 @@ interface PortfolioQAPaneProps {
   setMessages: React.Dispatch<React.SetStateAction<Array<{ role: "user" | "assistant"; content: string }>>>;
   firmId: string | undefined;
   onSubmitForCompany: (companyId: string) => void;
+  onFileSubmission: (files: File[], companyId: string) => void;
   pathname: string;
 }
 
-function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pathname }: PortfolioQAPaneProps) {
+function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, onFileSubmission, pathname }: PortfolioQAPaneProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [outstandingData, setOutstandingData] = useState<{
@@ -463,6 +539,7 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
   const [pendingReminder, setPendingReminder] = useState<"no_submission" | "partial" | false>(false);
   const [sendingReminders, setSendingReminders] = useState(false);
   const [qaPendingFiles, setQaPendingFiles] = useState<File[]>([]);
+  const [isDraggingOverQa, setIsDraggingOverQa] = useState<boolean>(false);
   const [companyList, setCompanyList] = useState<Array<{ id: string; name: string }>>([]);
   const [showCompanyPicker, setShowCompanyPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -534,8 +611,8 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
   ];
 
   const FIRM_SETTINGS_FIXED = [
+    "How do firmwide KPI settings and overrides work?",
     "What are the current firmwide KPI thresholds?",
-    "Which KPIs have alert rules configured?",
     "Submit data for a company →",
   ];
 
@@ -578,8 +655,48 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
     return [];
   })();
 
+  // Match a filename against the company list using word-based fuzzy matching
+  function matchCompanyFromFilename(filename: string, companies: Array<{ id: string; name: string }>): string | null {
+    const lower = filename.toLowerCase().replace(/[_\-\.]/g, " ");
+    for (const co of companies) {
+      const words = co.name.toLowerCase().split(/\s+/);
+      // Match if any significant word (>3 chars) from company name appears in filename
+      const significant = words.filter((w) => w.length > 3);
+      if (significant.some((w) => lower.includes(w))) return co.id;
+    }
+    return null;
+  }
+
+  // Stash files when user picks a company from the picker (file-submission flow)
+  const [filesForPicker, setFilesForPicker] = useState<File[]>([]);
+
   const sendMessage = useCallback(
     async (q: string) => {
+      // If files are attached, route to company submission flow instead of QA
+      if (qaPendingFiles.length > 0) {
+        const files = [...qaPendingFiles];
+        setQaPendingFiles([]);
+
+        // Try to match company from any filename
+        let matchedCompanyId: string | null = null;
+        for (const f of files) {
+          matchedCompanyId = matchCompanyFromFilename(f.name, companyList);
+          if (matchedCompanyId) break;
+        }
+
+        if (matchedCompanyId) {
+          // Auto-detected company — route directly to submission (no UI messages)
+          onFileSubmission(files, matchedCompanyId);
+          setInput("");
+          return;
+        }
+
+        // No match — show company picker with files stashed
+        setFilesForPicker(files);
+        setShowCompanyPicker(true);
+        return;
+      }
+
       const fileLines = qaPendingFiles.map((f) => `[Attached: ${f.name}]`).join("\n");
     const question = [fileLines, q.trim()].filter(Boolean).join("\n");
     if (!question || isLoading) return;
@@ -683,7 +800,7 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
         );
       }
     },
-    [isLoading]
+    [isLoading, companyList, onFileSubmission, qaPendingFiles]
   );
 
   function handleChipClick(chip: string) {
@@ -748,6 +865,7 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
   function handleQaDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
+    setIsDraggingOverQa(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) setQaPendingFiles((prev) => [...prev, ...files]);
   }
@@ -870,7 +988,7 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
               <span className="text-[11px] font-medium text-muted-foreground">Select a company to submit for:</span>
               <button
                 type="button"
-                onClick={() => setShowCompanyPicker(false)}
+                onClick={() => { setShowCompanyPicker(false); setFilesForPicker([]); }}
                 className="text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Cancel"
               >
@@ -887,7 +1005,12 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
                     type="button"
                     onClick={() => {
                       setShowCompanyPicker(false);
-                      onSubmitForCompany(company.id);
+                      if (filesForPicker.length > 0) {
+                        onFileSubmission(filesForPicker, company.id);
+                        setFilesForPicker([]);
+                      } else {
+                        onSubmitForCompany(company.id);
+                      }
                     }}
                     className="text-left px-3 py-1.5 rounded-md text-xs hover:bg-muted border border-transparent hover:border-border transition-colors"
                   >
@@ -933,6 +1056,8 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
               className="flex gap-2 items-end"
               onDrop={handleQaDrop}
               onDragOver={handleQaDragOver}
+              onDragEnter={(e) => { e.preventDefault(); setIsDraggingOverQa(true); }}
+              onDragLeave={() => setIsDraggingOverQa(false)}
             >
               <textarea
                 ref={textareaRef}
@@ -947,7 +1072,7 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pa
                 placeholder="Message..."
                 rows={1}
                 style={{ minHeight: "2.25rem", maxHeight: "128px", overflowY: "auto" }}
-                className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                className={`flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${isDraggingOverQa ? "ring-2 ring-primary border-primary" : ""}`}
               />
               <button
                 type="button"

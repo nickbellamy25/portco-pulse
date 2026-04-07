@@ -48,6 +48,7 @@ interface Props {
   contextPeriod?: string;  // pre-filled period from URL param (e.g. reminder link with ?period=April 2026)
   hintText?: string;
   autoMessage?: string;
+  autoUploads?: UploadResult[];
   promptChips?: string[];
   fixedChip?: string;
   compact?: boolean;
@@ -67,6 +68,7 @@ export function ChatInterface({
   contextPeriod,
   hintText,
   autoMessage,
+  autoUploads,
   promptChips = [],
   fixedChip,
   compact = false,
@@ -95,9 +97,10 @@ export function ChatInterface({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contextDataTypes, setContextDataTypes] = useState<Set<DataType>>(new Set());
   const [contextPeriods, setContextPeriods] = useState(contextPeriod ?? "");
-  const [contextDismissed, setContextDismissed] = useState(initialMessages.length > 0);
+  const [contextDismissed, setContextDismissed] = useState(initialMessages.length > 0 || !!autoMessage);
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [detectedDocs, setDetectedDocs] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoMessageSentRef = useRef(false);
@@ -128,6 +131,13 @@ export function ChatInterface({
     if (uploads.length > 0) {
       sessionUploadsRef.current = [...sessionUploadsRef.current, ...uploads];
       setSessionUploads(sessionUploadsRef.current);
+      // Extract detected document types from uploads
+      const docs = uploads.flatMap(u => {
+        if (u.detectedIncludedStatements) return u.detectedIncludedStatements;
+        if (u.detectedDocumentType && u.detectedDocumentType !== 'financial_document') return [u.detectedDocumentType];
+        return [];
+      });
+      if (docs.length > 0) setDetectedDocs(prev => [...new Set([...prev, ...docs])]);
     }
     setPendingUploads([]);
     setQuickReplies([]);
@@ -293,11 +303,19 @@ export function ChatInterface({
   useEffect(() => {
     if (autoMessage && !autoMessageSentRef.current) {
       autoMessageSentRef.current = true;
+      const uploads = autoUploads ?? [];
+      // Extract detected docs from auto uploads
+      const docs = uploads.flatMap(u => {
+        if (u.detectedIncludedStatements) return u.detectedIncludedStatements;
+        if (u.detectedDocumentType && u.detectedDocumentType !== 'financial_document') return [u.detectedDocumentType];
+        return [];
+      });
+      if (docs.length > 0) setDetectedDocs(prev => [...new Set([...prev, ...docs])]);
       // Small delay so the component is fully mounted
-      const t = setTimeout(() => sendMessage(autoMessage, []), 100);
+      const t = setTimeout(() => sendMessage(autoMessage, uploads), 100);
       return () => clearTimeout(t);
     }
-  }, [autoMessage, sendMessage]);
+  }, [autoMessage, autoUploads, sendMessage]);
 
   useEffect(() => {
     if (!input && textareaRef.current) {
@@ -349,7 +367,6 @@ export function ChatInterface({
         setPendingDocRecords([]);
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "", submittedPayload: editedPayload },
           { role: "assistant", content: `Submitted to ${firmName}. If you have more data to submit, feel free to share it now.` },
         ]);
       } else {
@@ -447,6 +464,7 @@ export function ChatInterface({
                   onConfirm={() => {}}
                   isSubmitting={false}
                   isSubmitted
+                  detectedDocuments={detectedDocs}
                 />
               </div>
             );
@@ -459,6 +477,7 @@ export function ChatInterface({
                 <ConfirmationSummary
                   payload={msg.pendingPayload}
                   enabledKpis={enabledKpis}
+                  detectedDocuments={detectedDocs}
                   onConfirm={(edited) => {
                     // Swap pending card to confirmed card in-place, then submit
                     setMessages((prev) => prev.map((m, j) =>
@@ -523,61 +542,79 @@ export function ChatInterface({
         <div ref={bottomRef} />
       </div>
 
-      {/* Prompt chips — show up to 3 unused chips from pool, rotate as used */}
-      {quickReplies.length === 0 && !messages.some(m => m.role === "user") && (() => {
+      {/* Prompt chips + quick replies + input: single border-t above whichever comes first */}
+      {(() => {
+        // Suppress prompt chips while autoMessage is pending OR once the user has engaged in conversation
+        // (sent a message and received a response — chips are conversation starters only)
+        const autoMessagePending = !!autoMessage && !autoMessageSentRef.current;
+        const hasActiveConversation = messages.some(m => m.role === "user") && messages.some(m => m.role === "assistant");
+        const showPromptChips = quickReplies.length === 0 && !autoMessagePending && !hasActiveConversation;
         const poolLimit = fixedChip ? 2 : 3;
-        const visibleChips = promptChips.filter((c) => !usedPromptChips.has(c)).slice(0, poolLimit);
-        if (visibleChips.length === 0 && !fixedChip) return null;
+        const visiblePromptChips = showPromptChips
+          ? promptChips.filter((c) => !usedPromptChips.has(c)).slice(0, poolLimit)
+          : [];
+        const hasPromptChips = visiblePromptChips.length > 0 || (fixedChip && showPromptChips);
+        const hasQuickReplies = quickReplies.length > 0 && !isLoading && !pendingPayload;
+        const chipsAboveInput = hasPromptChips || hasQuickReplies;
+
         return (
-          <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
-            {visibleChips.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => {
-                  setUsedPromptChips((prev) => new Set([...prev, chip]));
-                  sendMessage(chip, []);
-                }}
-                disabled={isLoading}
-                className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
-              >
-                {chip}
-              </button>
-            ))}
-            {fixedChip && (
-              <button
-                key={fixedChip}
-                type="button"
-                onClick={() => sendMessage(fixedChip, [])}
-                disabled={isLoading}
-                className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
-              >
-                {fixedChip}
-              </button>
+          <>
+            {hasPromptChips && (
+              <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2 border-t border-border">
+                {visiblePromptChips.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => {
+                      setUsedPromptChips((prev) => new Set([...prev, chip]));
+                      sendMessage(chip, []);
+                    }}
+                    disabled={isLoading}
+                    className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+                  >
+                    {chip}
+                  </button>
+                ))}
+                {fixedChip && (
+                  <button
+                    key={fixedChip}
+                    type="button"
+                    onClick={() => sendMessage(fixedChip, [])}
+                    disabled={isLoading}
+                    className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+                  >
+                    {fixedChip}
+                  </button>
+                )}
+              </div>
             )}
-          </div>
+
+            {hasQuickReplies && (
+              <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2 border-t border-border">
+                {quickReplies.map((reply, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => sendMessage(reply, [])}
+                    className={`px-3 py-1.5 rounded-full border border-border bg-background text-foreground hover:border-primary/60 hover:bg-muted transition-colors ${compact ? "text-xs" : "text-sm"}`}
+                  >
+                    {reply}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         );
       })()}
 
-      {/* Quick reply chips */}
-      {quickReplies.length > 0 && !isLoading && !pendingPayload && (
-        <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2 border-t border-border">
-          {quickReplies.map((reply, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => sendMessage(reply, [])}
-              className={`px-3 py-1.5 rounded-full border border-border bg-background text-foreground hover:border-primary/60 hover:bg-muted transition-colors ${compact ? "text-xs" : "text-sm"}`}
-            >
-              {reply}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Input area — always visible */}
+      {(() => {
+        const poolLimit = fixedChip ? 2 : 3;
+        const hasChips = (quickReplies.length === 0 && (promptChips.filter((c) => !usedPromptChips.has(c)).length > 0 || fixedChip))
+          || (quickReplies.length > 0 && !isLoading && !pendingPayload);
+        return (
       <div
-        className="border-t border-border px-4 pt-2 pb-3"
+        className={`${hasChips ? "" : "border-t border-border"} px-4 pt-2 pb-3`}
         onDrop={(e) => {
           e.preventDefault();
           if (e.dataTransfer.files.length > 0 && !pendingPayload) {
@@ -639,6 +676,8 @@ export function ChatInterface({
           </div>
         </div>
       </div>
+        );
+      })()}
     </div>
   );
 }

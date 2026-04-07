@@ -240,3 +240,35 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-07] | `!to.length` early return in email functions blocked in-app notifications even when email recipients ARE configured | Fixed: `!to.length` removed from early return; email-sending block now has `&& to.length > 0` guard internally. In-app notification block is unconditional (gated only by `firmId && *InAppEnabled`).
 
 [2026-04-07] | In-app notification titles used email subjects — too long, truncated in the bell panel | Replace `title: subject` with short specific strings: `"${companyName} submitted ${period}"`, `"${companyName}: ${periodLabel} submission voided"`, `"Portfolio digest — ${monthYear}"`, `"${firmName} — share data for ${companyName}"`. Never use email subject as in-app title.
+
+---
+
+## Performance
+
+[2026-04-07] | Page loads slow, notification polling too aggressive | SQLite PRAGMAs: synchronous=NORMAL, cache_size=-20000, temp_store=MEMORY. Notification poll 60s not 10s. Batch N+1 queries in analytics (period lookups, dashboard company data). Add indexes on thresholdRules and kpiDefinitions.
+
+---
+
+## Plan Tracking
+
+[2026-04-07] | Plan completeness check counted company-specific KPIs (capacity_utilization, arr, etc.) that were never in the plan | Only check firm-level KPIs (companyId IS NULL) that the company actually reports on. Company-specific operational metrics are excluded from plan completeness.
+
+---
+
+## Drag-Drop File Submission
+
+[2026-04-07] | autoMessage fired before file uploads completed — ChatInterface rendered and sent empty message while uploads were still in progress | Initialize `uploadingFiles` state to `true` when `initialFiles` are present: `useState(!!initialFiles && initialFiles.length > 0)`. This shows the loader immediately and prevents ChatInterface from mounting prematurely.
+
+[2026-04-07] | Pre-chat context card ("What data are you submitting? Actuals/Plan") showed during auto-submit | Set `contextDismissed` initial state to true when `autoMessage` is present: `useState(initialMessages.length > 0 || !!autoMessage)`.
+
+[2026-04-07] | "Switching to submission mode" message and back button created jarring UX during file submission | Remove detection message from QA pane sendMessage. Hide back button when `pendingSubmissionFiles.length > 0`. Clear chatMessages in handleFileSubmission.
+
+[2026-04-07] | Combined file documents showed yellow badges on Submission Tracking (viaCombined flag) | Remove viaCombined distinction in DocChip — any found document shows green regardless of source.
+
+[2026-04-07] | KPI table disappeared after clicking Submit | handleConfirm was appending a duplicate submittedPayload card. The onConfirm callback already swaps pendingPayload→submittedPayload in-place. handleConfirm should only append the success text message.
+
+---
+
+## Demo Files
+
+[2026-04-07] | Demo files need to be realistic and test specific platform capabilities | Brighton XLSX: 3-tab financials (tests document recognition). Apex TXT: messy informal email (tests unstructured extraction). Culinary PDF: formatted P&L (tests PDF handling). Pinnacle XLSX: 3-year historical (tests onboarding). Seed cleans demo dir on each run (rmSync). Numbers must be plausible continuations of seeded history.

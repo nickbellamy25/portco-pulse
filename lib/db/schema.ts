@@ -167,6 +167,7 @@ export const kpiDefinitions = sqliteTable(
   },
   (t) => [
     uniqueIndex("kpi_defs_firm_key_company_idx").on(t.firmId, t.key, t.companyId),
+    index("kpi_definitions_firm_active_idx").on(t.firmId, t.active),
   ]
 );
 
@@ -270,7 +271,11 @@ export const thresholdRules = sqliteTable(
     thresholdValue: real("threshold_value").notNull(),
     severity: text("severity", { enum: ["low", "medium", "high"] }).notNull(),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
-  }
+  },
+  (t) => [
+    index("threshold_rules_firm_kpi_idx").on(t.firmId, t.kpiDefinitionId),
+    index("threshold_rules_firm_company_idx").on(t.firmId, t.companyId),
+  ]
 );
 
 // ─── ALERTS ───────────────────────────────────────────────────────────────────

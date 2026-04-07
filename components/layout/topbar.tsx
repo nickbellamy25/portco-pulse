@@ -50,7 +50,7 @@ export function Topbar({ userName, userRole }: TopbarProps) {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 10000);
+    const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -182,7 +182,7 @@ export function Topbar({ userName, userRole }: TopbarProps) {
         </div>
         <button
           onClick={() => {
-            try { sessionStorage.removeItem("pulse_qa_messages_v1"); } catch {}
+            try { sessionStorage.removeItem("pulse_chat_messages_v1"); } catch {}
             signOut({ callbackUrl: "/login" });
           }}
           className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted"

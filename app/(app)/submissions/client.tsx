@@ -139,12 +139,9 @@ function DocChip({
   if (!required) {
     chipClass = "bg-gray-50 text-gray-300 border-gray-200";
     tipText = `${full} — not required`;
-  } else if (doc && !doc.viaCombined) {
+  } else if (doc) {
     chipClass = "bg-green-100 text-green-700 border-green-300";
     tipText = `${full} — detected`;
-  } else if (doc && doc.viaCombined) {
-    chipClass = "bg-amber-100 text-amber-700 border-amber-300";
-    tipText = `${full} — partial (in combined file)`;
   } else {
     chipClass = "bg-red-100 text-red-600 border-red-300";
     tipText = `${full} — missing`;

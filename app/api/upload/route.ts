@@ -35,6 +35,7 @@ export interface UploadResult {
   imageMediaType?: string;
   extractionMethod: string;
   pageCount?: number;
+  pdfBase64?: string;
   filePath?: string;             // relative path from UPLOADS_DIR root, e.g. "{companyId}/{uuid}-{name}"
   detectedDocumentType?: string; // auto-detected document type for Claude's awareness
   detectedIncludedStatements?: string[]; // for combined files
@@ -154,12 +155,12 @@ async function extractPdf(buffer: Buffer, fileName: string): Promise<UploadResul
     // fall through to OCR
   }
 
-  // Scanned PDF — flag it; full OCR via tesseract is optional
+  // Scanned PDF — send as native PDF document block for Claude vision
   return {
     fileName,
     mimeType: "application/pdf",
-    extractedText: `[PDF: ${fileName} — this appears to be a scanned document. Please type or paste the key figures from this document and I will extract the KPI values.]`,
-    extractionMethod: "scanned_pdf_notice",
+    pdfBase64: buffer.toString("base64"),
+    extractionMethod: "pdf_document",
   };
 }
 
@@ -281,7 +282,7 @@ const DOC_TYPE_PATTERNS: Record<string, RegExp> = {
 };
 
 function detectDocumentTypes(text: string): { primary: string; included: string[] } {
-  const sample = text.slice(0, 2000);
+  const sample = text.slice(0, 8000);
   const found = Object.entries(DOC_TYPE_PATTERNS)
     .filter(([, re]) => re.test(sample))
     .map(([type]) => type);

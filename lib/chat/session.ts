@@ -101,4 +101,5 @@ export interface AnthropicMessage {
 
 export type AnthropicContentBlock =
   | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+  | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } };

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { MessageSquare, PanelRightClose, Loader2, Send, Paperclip, X } from "lucide-react";
+import { MessageSquare, PanelRightClose, Loader2, Send, Paperclip, X, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -65,28 +65,72 @@ export function PersistentChatPanel({
 }: PersistentChatPanelProps) {
   const { chatOpen, toggleChat } = useChatContext();
 
-  const SESSION_KEY = "pulse_qa_messages_v1";
-  const [portfolioMessages, setPortfolioMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>(() => {
+  const [panelWidth, setPanelWidth] = useState(384);
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+  const [submissionOverrideId, setSubmissionOverrideId] = useState<string | null>(null);
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = panelWidth;
+
+    function onMouseMove(ev: MouseEvent) {
+      if (!isDragging.current) return;
+      const delta = dragStartX.current - ev.clientX; // drag left = wider
+      const newWidth = Math.max(320, Math.min(640, dragStartWidth.current + delta));
+      setPanelWidth(newWidth);
+    }
+    function onMouseUp() {
+      isDragging.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [panelWidth]);
+
+  const SESSION_KEY = "pulse_chat_messages_v1";
+  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; [key: string]: unknown }>>(() => {
     if (typeof window === "undefined") return [];
     try {
-      const stored = sessionStorage.getItem("pulse_qa_messages_v1");
+      const stored = sessionStorage.getItem("pulse_chat_messages_v1");
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   });
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(portfolioMessages));
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(chatMessages));
     } catch {}
-  }, [portfolioMessages]);
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (!chatOpen) {
+      setPanelWidth(384);
+      setSubmissionOverrideId(null);
+    }
+  }, [chatOpen]);
 
   return (
     <div
-      className="shrink-0 h-full border-l border-border flex flex-col overflow-hidden transition-[width] duration-300 ease-in-out"
+      className="relative shrink-0 h-full flex flex-col overflow-hidden"
       style={{
-        width: chatOpen ? "384px" : "2.25rem",
+        width: chatOpen ? `${panelWidth}px` : "2.25rem",
+        transition: isDragging.current ? "none" : "width 300ms ease-in-out",
+        borderLeft: "1px solid hsl(var(--border))",
       }}
     >
+      {/* Drag handle on left edge — only when open */}
+      {chatOpen && (
+        <div
+          onMouseDown={handleResizeMouseDown}
+          className="absolute left-0 top-0 h-full w-1.5 z-10"
+          style={{ cursor: "col-resize" }}
+        />
+      )}
       {/* Closed state — vertical clickable tab */}
       {!chatOpen && (
         <button
@@ -119,8 +163,10 @@ export function PersistentChatPanel({
             userCompanyId={userCompanyId}
             firmId={firmId}
             onCollapse={toggleChat}
-            portfolioMessages={portfolioMessages}
-            setPortfolioMessages={setPortfolioMessages}
+            chatMessages={chatMessages}
+            setChatMessages={setChatMessages}
+            submissionOverrideId={submissionOverrideId}
+            setSubmissionOverrideId={setSubmissionOverrideId}
           />
         </Suspense>
       )}
@@ -137,8 +183,10 @@ interface ChatPanelExpandedProps {
   userCompanyId: string | null;
   firmId: string | undefined;
   onCollapse: () => void;
-  portfolioMessages: Array<{ role: "user" | "assistant"; content: string }>;
-  setPortfolioMessages: React.Dispatch<React.SetStateAction<Array<{ role: "user" | "assistant"; content: string }>>>;
+  chatMessages: Array<{ role: "user" | "assistant"; content: string; [key: string]: unknown }>;
+  setChatMessages: React.Dispatch<React.SetStateAction<Array<{ role: "user" | "assistant"; content: string; [key: string]: unknown }>>>;
+  submissionOverrideId: string | null;
+  setSubmissionOverrideId: (id: string | null) => void;
 }
 
 function ChatPanelExpanded({
@@ -146,13 +194,17 @@ function ChatPanelExpanded({
   userCompanyId,
   firmId,
   onCollapse,
-  portfolioMessages,
-  setPortfolioMessages,
+  chatMessages,
+  setChatMessages,
+  submissionOverrideId,
+  setSubmissionOverrideId,
 }: ChatPanelExpandedProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [ctx, setCtx] = useState<ChatCtx>(null);
   const [loading, setLoading] = useState(true);
+  const [overrideCtx, setOverrideCtx] = useState<CompanyContext | null>(null);
+  const [overrideLoading, setOverrideLoading] = useState(false);
 
   // Company ID from URL — only honoured on relevant routes
   const companyIdFromUrl: string | null =
@@ -167,11 +219,23 @@ function ChatPanelExpanded({
       : companyIdFromUrl;
 
   const prevTargetRef = useRef<string | null | undefined>(undefined);
+  const prevCompanyIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     // Skip if the target hasn't changed
     if (prevTargetRef.current === targetCompanyId) return;
     prevTargetRef.current = targetCompanyId;
+
+    // Reset chat messages when switching between two different companies (not portfolio↔company)
+    const switchingCompany =
+      prevCompanyIdRef.current !== undefined &&
+      prevCompanyIdRef.current !== null &&
+      targetCompanyId !== null &&
+      prevCompanyIdRef.current !== targetCompanyId;
+    if (switchingCompany) {
+      setChatMessages([]);
+    }
+    prevCompanyIdRef.current = targetCompanyId;
 
     if (!targetCompanyId) {
       setCtx(persona === "investor" ? { kind: "portfolio" } : null);
@@ -191,6 +255,32 @@ function ChatPanelExpanded({
       .finally(() => setLoading(false));
   }, [targetCompanyId, persona]);
 
+  // Fetch override context when submissionOverrideId changes
+  useEffect(() => {
+    if (!submissionOverrideId || targetCompanyId !== null) {
+      setOverrideCtx(null);
+      return;
+    }
+    setOverrideLoading(true);
+    fetch(`/api/chat/context?companyId=${encodeURIComponent(submissionOverrideId)}`)
+      .then((r) => r.json())
+      .then((data: Omit<CompanyContext, "kind">) => {
+        setOverrideCtx({ ...data, kind: "company" });
+      })
+      .catch(() => {
+        setOverrideCtx(null);
+      })
+      .finally(() => setOverrideLoading(false));
+  }, [submissionOverrideId, targetCompanyId]);
+
+  function handleBackToPortfolio() {
+    setSubmissionOverrideId(null);
+    setChatMessages([]);
+    setOverrideCtx(null);
+  }
+
+  const showOverride = overrideCtx !== null && targetCompanyId === null;
+
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-background">
       {/* Header */}
@@ -209,12 +299,31 @@ function ChatPanelExpanded({
         </button>
       </div>
 
+      {/* Back button when override is active */}
+      {showOverride && (
+        <button
+          type="button"
+          onClick={handleBackToPortfolio}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border-b border-border w-full bg-muted/30 transition-colors shrink-0"
+        >
+          <ChevronLeft className="h-3 w-3" /> Portfolio chat
+        </button>
+      )}
+
       {/* Body */}
       <div className="flex flex-col flex-1 min-h-0">
-        {loading ? (
+        {loading || overrideLoading ? (
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
+        ) : showOverride ? (
+          <CompanyChat
+            ctx={overrideCtx!}
+            messages={chatMessages}
+            onMessagesChange={setChatMessages}
+            onSubmitForCompany={null}
+            autoSubmit={true}
+          />
         ) : ctx === null ? (
           <div className="flex flex-1 items-center justify-center p-4 text-center">
             <p className="text-sm text-muted-foreground">
@@ -223,12 +332,19 @@ function ChatPanelExpanded({
           </div>
         ) : ctx.kind === "portfolio" ? (
           <PortfolioQAPane
-            messages={portfolioMessages}
-            setMessages={setPortfolioMessages}
+            messages={chatMessages}
+            setMessages={setChatMessages}
             firmId={firmId}
+            onSubmitForCompany={(id) => setSubmissionOverrideId(id)}
+            pathname={pathname}
           />
         ) : (
-          <CompanyChat ctx={ctx} />
+          <CompanyChat
+            ctx={ctx}
+            messages={chatMessages}
+            onMessagesChange={setChatMessages}
+            onSubmitForCompany={(id) => setSubmissionOverrideId(id)}
+          />
         )}
       </div>
     </div>
@@ -239,23 +355,58 @@ function ChatPanelExpanded({
 // CompanyChat — wraps ChatInterface from the submission flow
 // ---------------------------------------------------------------------------
 
-function CompanyChat({ ctx }: { ctx: CompanyContext }) {
-  const [pendingChip, setPendingChip] = useState<string | null>(null);
+function CompanyChat({
+  ctx,
+  messages,
+  onMessagesChange,
+  onSubmitForCompany,
+  autoSubmit,
+}: {
+  ctx: CompanyContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messages: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onMessagesChange: (msgs: any[]) => void;
+  onSubmitForCompany: ((companyId: string) => void) | null;
+  autoSubmit?: boolean;
+}) {
   const pathname = usePathname();
 
-  const companyChips = [
+  const ANALYTICS_CHIP_POOL = [
     `How is ${ctx.companyName} tracking against plan?`,
-    `Show ${ctx.companyName}'s revenue trend`,
-    `What are ${ctx.companyName}'s latest KPIs?`,
+    `Any active KPI alerts for ${ctx.companyName}?`,
+    `Show ${ctx.companyName}'s headcount trend`,
+    `What's ${ctx.companyName}'s worst performing KPI vs plan?`,
+    `Is ${ctx.companyName} on track to hit its annual plan?`,
+    `How does ${ctx.companyName}'s margin compare to last period?`,
   ];
 
-  const promptChips =
-    pathname.startsWith("/admin/settings") || pathname === "/settings"
-      ? []
-      : companyChips;
+  const COMPANY_SETTINGS_FIXED = [
+    `What are ${ctx.companyName}'s current KPI rules?`,
+    `Show ${ctx.companyName}'s current alert thresholds`,
+    `Submit this period's data for ${ctx.companyName}`,
+  ];
 
-  const initialMessages: InitialMsg[] =
-    ctx.initialMessages && ctx.initialMessages.length > 0
+  const isCompanySettings = pathname === "/admin/companies";
+
+  // Chip pool passed to ChatInterface — it handles rotation internally via usedPromptChips.
+  // For analytics: full 6-chip pool + submit chip (ChatInterface shows first 3 unused, up to 3 total).
+  // For company settings: 3 fixed chips.
+  // Note: submit chip sends a message in the current ChatInterface impl (Part 1 behavior).
+  // Part 2 will intercept it via onSubmitForCompany.
+  const promptChips: string[] = isCompanySettings
+    ? COMPANY_SETTINGS_FIXED
+    : ANALYTICS_CHIP_POOL;
+
+  const fixedChip: string | undefined = isCompanySettings
+    ? undefined
+    : `Submit this period's data for ${ctx.companyName}`;
+
+  // Use persisted unified messages if available; otherwise fall back to company's DB history
+  const effectiveInitialMessages =
+    messages.length > 0
+      ? messages
+      : ctx.initialMessages && ctx.initialMessages.length > 0
       ? ctx.initialMessages
       : ctx.openingMessage
       ? [{ role: "assistant" as const, content: ctx.openingMessage }]
@@ -268,13 +419,16 @@ function CompanyChat({ ctx }: { ctx: CompanyContext }) {
         companyName={ctx.companyName}
         firmName={ctx.firmName}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        initialMessages={initialMessages as any}
+        initialMessages={effectiveInitialMessages as any}
         enabledKpis={ctx.enabledKpis}
         submittedByUserId={ctx.userId}
         mode={ctx.chatMode}
         chatEndpoint={ctx.chatEndpoint}
-        autoMessage={pendingChip ?? undefined}
         promptChips={promptChips}
+        fixedChip={fixedChip}
+        onMessagesChange={onMessagesChange}
+        compact={true}
+        autoMessage={autoSubmit ? `Submit this period's data for ${ctx.companyName}` : undefined}
       />
     </div>
   );
@@ -293,10 +447,11 @@ interface PortfolioQAPaneProps {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   setMessages: React.Dispatch<React.SetStateAction<Array<{ role: "user" | "assistant"; content: string }>>>;
   firmId: string | undefined;
+  onSubmitForCompany: (companyId: string) => void;
+  pathname: string;
 }
 
-function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps) {
-  const pathname = usePathname();
+function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, pathname }: PortfolioQAPaneProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [outstandingData, setOutstandingData] = useState<{
@@ -308,9 +463,25 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
   const [pendingReminder, setPendingReminder] = useState<"no_submission" | "partial" | false>(false);
   const [sendingReminders, setSendingReminders] = useState(false);
   const [qaPendingFiles, setQaPendingFiles] = useState<File[]>([]);
+  const [companyList, setCompanyList] = useState<Array<{ id: string; name: string }>>([]);
+  const [showCompanyPicker, setShowCompanyPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [usedChips, setUsedChips] = useState<Set<string>>(new Set());
+
+  // Reset usedChips when pathname changes
+  useEffect(() => {
+    setUsedChips(new Set());
+    setShowCompanyPicker(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => bottomRef.current?.scrollIntoView(), 50);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch outstanding submissions when on /submissions
   useEffect(() => {
@@ -328,23 +499,82 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
       .catch(() => {});
   }, [pathname]);
 
-  const chips: string[] = (() => {
-    if (pathname === "/dashboard") return [
-      "Which portco is most at risk?",
-      "Show portfolio revenue last period",
-      "Who's behind on plan YTD?",
-      "Any active KPI alerts?",
-    ];
-    if (pathname === "/submissions") {
-      const result: string[] = ["Which companies are at risk of missing this period's deadline?"];
-      if (outstandingData && outstandingData.noSubmission.length > 0) {
-        result.push("Send reminders to companies with no submission");
-      }
-      if (outstandingData && outstandingData.partial.length > 0) {
-        result.push("Send reminders to companies with partial submissions");
-      }
-      return result;
+  // Fetch company list on mount (lazy, once)
+  useEffect(() => {
+    fetch("/api/companies")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setCompanyList(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!input && textareaRef.current) {
+      textareaRef.current.style.height = "auto";
     }
+  }, [input]);
+
+  // ── Chip pools ────────────────────────────────────────────────────────────
+
+  const DASHBOARD_CHIP_POOL = [
+    "Who's behind on plan YTD?",
+    "Which company has deteriorated most over the last 3 periods?",
+    "How is total portfolio EBITDA trending vs last year?",
+    "Which company's cash position is most concerning?",
+    "Who improved most last period?",
+    "Which portco is most at risk?",
+  ];
+
+  const SUBMISSIONS_CHIP_POOL = [
+    "Which companies are at risk of missing this period's deadline?",
+    "Which company submitted most recently?",
+    "Which companies have been consistently late this year?",
+    "Has any company missed 2 or more consecutive periods?",
+  ];
+
+  const FIRM_SETTINGS_FIXED = [
+    "What are the current firmwide KPI thresholds?",
+    "Which KPIs have alert rules configured?",
+    "Submit data for a company →",
+  ];
+
+  const isFirmSettings = pathname === "/admin/settings" || pathname === "/settings";
+  const isSubmissions = pathname === "/submissions";
+  const isDashboard = pathname === "/dashboard";
+
+  const chips: string[] = (() => {
+    // Firm Settings: 3 fixed, no rotation
+    if (isFirmSettings) {
+      return FIRM_SETTINGS_FIXED;
+    }
+
+    if (isDashboard) {
+      // 2 rotating + fixed submit chip in slot 3
+      const rotating = DASHBOARD_CHIP_POOL.filter((c) => !usedChips.has(c)).slice(0, 2);
+      return [...rotating, "Submit data for a company →"];
+    }
+
+    if (isSubmissions) {
+      // Dynamic reminder chips
+      const dynamicChips: string[] = [];
+      if (outstandingData && outstandingData.noSubmission.length > 0 && !usedChips.has("Send reminders to companies with no submission")) {
+        dynamicChips.push("Send reminders to companies with no submission");
+      }
+      if (outstandingData && outstandingData.partial.length > 0 && !usedChips.has("Send reminders to companies with partial submissions")) {
+        dynamicChips.push("Send reminders to companies with partial submissions");
+      }
+
+      // Fixed submit chip in slot 1; remaining slots for rotating + dynamic
+      const submitChip = "Submit data for a company →";
+      const remainingSlots = 2; // total 3 - 1 fixed
+      // Dynamic chips consume slots from the remaining 2
+      const dynamicToShow = dynamicChips.slice(0, remainingSlots);
+      const rotatingSlots = remainingSlots - dynamicToShow.length;
+      const rotating = SUBMISSIONS_CHIP_POOL.filter((c) => !usedChips.has(c)).slice(0, rotatingSlots);
+      return [submitChip, ...rotating, ...dynamicToShow];
+    }
+
     return [];
   })();
 
@@ -457,6 +687,13 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
   );
 
   function handleChipClick(chip: string) {
+    setUsedChips((prev) => new Set([...prev, chip]));
+
+    if (chip === "Submit data for a company →") {
+      setShowCompanyPicker(true);
+      return;
+    }
+
     if (chip === "Send reminders to companies with no submission") {
       if (!outstandingData || outstandingData.noSubmission.length === 0) return;
       const names = outstandingData.noSubmission.map((c) => c.companyName);
@@ -626,73 +863,116 @@ function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps
           </div>
         )}
 
-        {chips.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {chips.map((chip) => (
+        {/* Company picker overlay */}
+        {showCompanyPicker ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Select a company to submit for:</span>
               <button
-                key={chip}
                 type="button"
-                onClick={() => handleChipClick(chip)}
-                disabled={isLoading}
-                className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+                onClick={() => setShowCompanyPicker(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Cancel"
               >
-                {chip}
+                <X className="h-3.5 w-3.5" />
               </button>
-            ))}
+            </div>
+            <div className="max-h-48 overflow-y-auto flex flex-col gap-1">
+              {companyList.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground text-center py-2">No companies found.</p>
+              ) : (
+                companyList.map((company) => (
+                  <button
+                    key={company.id}
+                    type="button"
+                    onClick={() => {
+                      setShowCompanyPicker(false);
+                      onSubmitForCompany(company.id);
+                    }}
+                    className="text-left px-3 py-1.5 rounded-md text-xs hover:bg-muted border border-transparent hover:border-border transition-colors"
+                  >
+                    {company.name}
+                  </button>
+                ))
+              )}
+            </div>
           </div>
-        )}
-
-        {qaPendingFiles.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {qaPendingFiles.map((f, i) => (
-              <div key={i} className="flex items-center gap-1 bg-muted border border-border rounded-full px-2.5 py-0.5 text-[11px]">
-                <Paperclip className="h-3 w-3 text-muted-foreground" />
-                <span className="max-w-[100px] truncate">{f.name}</span>
-                <button type="button" onClick={() => setQaPendingFiles((prev) => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-foreground ml-0.5">
-                  <X className="h-3 w-3" />
-                </button>
+        ) : (
+          <>
+            {chips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {chips.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => handleChipClick(chip)}
+                    disabled={isLoading}
+                    className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+                  >
+                    {chip}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-        <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleQaFileChange} />
-        <div
-          className="flex gap-2 items-end"
-          onDrop={handleQaDrop}
-          onDragOver={handleQaDragOver}
-        >
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            placeholder="Message..."
-            rows={2}
-            className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
-            aria-label="Attach file"
-            className="h-9 w-9 shrink-0 flex items-center justify-center rounded-md border border-border hover:bg-muted transition-colors disabled:opacity-40"
-          >
-            <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
-          <Button
-            size="icon"
-            disabled={isLoading || (!input.trim() && qaPendingFiles.length === 0)}
-            onClick={() => sendMessage(input)}
-            className="h-9 w-9 shrink-0"
-          >
-            {isLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Send className="h-3.5 w-3.5" />
             )}
-          </Button>
-        </div>
+
+            {qaPendingFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {qaPendingFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-1 bg-muted border border-border rounded-full px-2.5 py-0.5 text-[11px]">
+                    <Paperclip className="h-3 w-3 text-muted-foreground" />
+                    <span className="max-w-[100px] truncate">{f.name}</span>
+                    <button type="button" onClick={() => setQaPendingFiles((prev) => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-foreground ml-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleQaFileChange} />
+            <div
+              className="flex gap-2 items-end"
+              onDrop={handleQaDrop}
+              onDragOver={handleQaDragOver}
+            >
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = Math.min(e.target.scrollHeight, 128) + "px";
+                }}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+                placeholder="Message..."
+                rows={1}
+                style={{ minHeight: "2.25rem", maxHeight: "128px", overflowY: "auto" }}
+                className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                aria-label="Attach file"
+                className="h-9 w-9 shrink-0 flex items-center justify-center rounded-md border border-border hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+              <Button
+                size="icon"
+                disabled={isLoading || (!input.trim() && qaPendingFiles.length === 0)}
+                onClick={() => sendMessage(input)}
+                className="h-9 w-9 shrink-0"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

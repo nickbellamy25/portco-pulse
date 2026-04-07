@@ -17,6 +17,8 @@ import {
   saveEmailSettingsAction,
   saveDueDaysAction,
   saveFirmDocsAction,
+  saveFirmNameAction,
+  saveFirmEmailAction,
   createFirmKpiAction,
   deleteFirmKpiAction,
   updateFirmKpiNoteAction,
@@ -42,6 +44,7 @@ type Props = {
   userScopes: UserAccessScope[];
   funds: string[];
   industries: string[];
+  firmName: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1026,17 +1029,6 @@ function NotificationsSection({
   return (
     <div className="space-y-8">
       <div>
-        <div className="mb-4 grid grid-cols-2 gap-4">
-          <div>
-            <Label>From Name</Label>
-            <Input value={vals.fromName} onChange={(e) => onChange("fromName", e.target.value)} className="mt-1.5" />
-          </div>
-          <div>
-            <Label>From Email</Label>
-            <Input value={vals.fromEmail} onChange={(e) => onChange("fromEmail", e.target.value)} className="mt-1.5" type="email" />
-            <p className="text-xs text-muted-foreground mt-1.5">Must be a verified sender domain in your email provider.</p>
-          </div>
-        </div>
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2 bg-muted/30 border-b border-border">
             <div className="w-[180px] shrink-0 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Event</div>
@@ -1077,9 +1069,8 @@ function NotificationsSection({
 
 // ─── Main Settings Client ─────────────────────────────────────────────────────
 
-export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmUsers, allCompanies, userScopes, funds, industries }: Props) {
+export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmUsers, allCompanies, userScopes, funds, industries, firmName: initialFirmName }: Props) {
   const initial = {
-    fromName: settings?.fromName ?? "PortCo Pulse",
     fromEmail: settings?.fromEmail ?? "noreply@portcopulse.com",
     reminderSubject: settings?.reminderSubject || "Action Required: Submission Due — {{company_name}}",
     reminderBody: settings?.reminderBody || "Dear {{company_name}},\n\nThis is a reminder that your submission is due by {{due_date}}.\n\nSubmit here: {{submission_link}}\n\nThank you.",
@@ -1144,6 +1135,9 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
     monthlyDigestInAppEnabled: (settings as any)?.monthlyDigestInAppEnabled ?? true,
   });
   const [saving, setSaving] = useState(false);
+  const [localFirmName, setLocalFirmName] = useState(initialFirmName);
+  const [localFirmEmail, setLocalFirmEmail] = useState(vals.fromEmail ?? settings?.fromEmail ?? "");
+  const [firmSaving, setFirmSaving] = useState(false);
 
   const parseDocs = (s: string | null) =>
     new Set((s ?? "balance_sheet,income_statement,cash_flow_statement").split(",").filter(Boolean));
@@ -1170,6 +1164,21 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
   }
 
   const router = useRouter();
+
+  async function handleSaveFirmDetails() {
+    setFirmSaving(true);
+    try {
+      await saveFirmNameAction(firmId, localFirmName);
+      await saveFirmEmailAction(firmId, localFirmEmail);
+      toast.success("Firm details saved.");
+      router.refresh();
+    } catch {
+      toast.error("Failed to save firm details.");
+    } finally {
+      setFirmSaving(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -1179,7 +1188,7 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
         annual:    Number(vals.dueDaysAnnual ?? 60),
         biAnnual:  Number(vals.dueDaysBiAnnual ?? 45),
       });
-      await saveEmailSettingsAction({ firmId, ...vals, ...prefs } as Parameters<typeof saveEmailSettingsAction>[0]);
+      await saveEmailSettingsAction({ firmId, ...vals, fromName: localFirmName, fromEmail: localFirmEmail, ...prefs } as Parameters<typeof saveEmailSettingsAction>[0]);
       await saveFirmDocsAction(firmId, [...docsChecked].join(","), serializeCadences(docsCadences));
       toast.success("Settings saved.");
       router.refresh();
@@ -1197,7 +1206,7 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
       <Tabs defaultValue="access">
         <TabsList className="justify-start rounded-none bg-transparent border-b border-border px-0 h-auto gap-0 w-full mb-8 [&>*]:flex-none">
           {[
-            { value: "access", label: "Access" },
+            { value: "access", label: "General" },
             { value: "notifications", label: "Notifications" },
             { value: "kpis", label: "Firm-Wide KPIs" },
             { value: "submissions", label: "Submissions" },
@@ -1213,6 +1222,24 @@ export function SettingsClient({ firmId, currentUserId, settings, kpiDefs, firmU
         </TabsList>
 
         <TabsContent value="access">
+          {/* Firm Details */}
+          <div className="mb-8 pb-8 border-b border-border">
+            <h3 className="text-sm font-semibold mb-4">Firm Details</h3>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label>Firm Name</Label>
+                <Input value={localFirmName} onChange={(e) => setLocalFirmName(e.target.value)} className="mt-1.5" placeholder="e.g. Meridian Capital Partners" />
+                <p className="text-xs text-muted-foreground mt-1">Used in operator chat messages and system prompts.</p>
+              </div>
+              <div>
+                <Label>From Email</Label>
+                <Input value={localFirmEmail} onChange={(e) => setLocalFirmEmail(e.target.value)} className="mt-1.5" placeholder="reporting@yourdomain.com" />
+                <p className="text-xs text-muted-foreground mt-1">Must be a verified sender domain in your email provider.</p>
+              </div>
+            </div>
+            <Button onClick={handleSaveFirmDetails} disabled={firmSaving}>{firmSaving ? "Saving..." : "Save"}</Button>
+          </div>
+          <h3 className="text-sm font-semibold mb-4">Team Access</h3>
           <TeamSection firmId={firmId} currentUserId={currentUserId} initialUsers={firmUsers} allCompanies={allCompanies} userScopes={userScopes} funds={funds} industries={industries} />
         </TabsContent>
 

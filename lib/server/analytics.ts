@@ -1093,7 +1093,7 @@ export function getSubmissionTracking(firmId: string, periodId: string, filters:
       sourceFiles: docs.map((d) => ({ id: d.id, fileName: d.fileName, version: d.version, uploadedAt: d.uploadedAt })),
       submittedBy,
       submittedAt: sub?.submittedAt ?? null,
-      isOverdue: isOverdueable && status !== "submitted",
+      isOverdue: isOverdueable && baseStatus !== "submitted",
     });
   }
 

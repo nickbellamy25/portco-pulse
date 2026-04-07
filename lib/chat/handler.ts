@@ -234,6 +234,19 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
         type: "text",
         text: `This is an uploaded document image from ${upload.fileName}. Please extract all KPI data visible in this image.`,
       });
+    } else if (upload.extractionMethod === "pdf_document" && upload.pdfBase64) {
+      userContentBlocks.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf" as const,
+          data: upload.pdfBase64,
+        },
+      } as any);
+      userContentBlocks.push({
+        type: "text",
+        text: `This is a PDF document: ${upload.fileName}. Please extract all KPI data, financial figures, and relevant information from it.`,
+      });
     } else if (upload.extractedText) {
       userContentBlocks.push({ type: "text", text: upload.extractedText });
     }

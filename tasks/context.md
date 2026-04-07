@@ -174,3 +174,69 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-06] | Chat Q&A tables still not sorted by relevant metric in growth questions | Sort rule must be explicit: sort by the metric that answers the question (e.g. for growth questions sort by growth %, not absolute value). Compute full sort before writing context line. This is in assemblePortfolioQASystemPrompt.
 
 [2026-04-06] | Chat Q&A conclusions still verbose with seasonal notes and run-rate commentary | Conclusion rule must explicitly forbid: seasonal explanations, run-rate commentary, interpretations of why the winner won. Only add conclusion for structural data limitations causing misinterpretation.
+
+---
+
+## Chat Pane — System Prompt Quality
+
+[2026-04-07] | Company chat (Analytics) had weaker ANSWERING KPI QUESTIONS rules than portfolio Q&A — different quality standards per tab | The ANSWERING KPI QUESTIONS section in `assembleSystemPrompt` must be kept identical to the ANSWERING QUESTIONS rules in `assemblePortfolioQASystemPrompt`. Any future prompt quality changes must be applied to BOTH functions simultaneously.
+
+[2026-04-07] | Added clarifying questions rule — AI started asking about obvious PE terms like "active KPI alerts" | Clarifying questions rule must use PE analyst judgment: standard terms are interpreted directly, never asked about. Only ask when question is truly unresolvable. Never offer "if you meant X" alternatives — pick best interpretation and answer it.
+
+[2026-04-07] | AI was explaining data gaps ("I don't have access to deadline policies") instead of answering | No-hedging rule: never explain what data you don't have unless the question literally cannot be answered. Never offer multiple interpretations. Pick the most reasonable read and answer it.
+
+---
+
+## Chat Pane — Chips
+
+[2026-04-07] | Submit chip must never cycle out of rotation regardless of being clicked | Fixed chips (submit, informational settings chips) are rendered separately from the rotating pool and never added to `usedChips`. Rotating chips fill the remaining slots. The submit chip occupies slot 3 on most pages, slot 1 on Submissions.
+
+[2026-04-07] | AI settings editing via chat decided against | Settings chips are informational only. No `propose_setting_change` tool, no mutation API. If this is ever revisited, it requires: new tool in handler.ts, confirmation card UI, PATCH API endpoint, and notification on alert-rule changes.
+
+---
+
+## Analytics / Submissions Bug
+
+[2026-04-07] | `status is not defined` crash in `analytics.ts:1096` when viewing old Submissions period | Variable was `status` but should be `baseStatus` (defined ~15 lines above). Always use `baseStatus` in `getSubmissionTracking` — the `status` object key is assigned from it, not the other way around.
+
+---
+
+## ChatInterface
+
+[2026-04-07] | ChatInterface `text-sm` was larger than PortfolioQAPane `text-xs` when rendered in the compact panel | `ChatInterface` has a `compact` prop. Set `compact={true}` in `CompanyChat` (panel context). Never set it on the operator submission page. Affects: message bubble font + padding, textarea font, quick reply chip font.
+
+---
+
+## Chat Chips
+
+[2026-04-07] | Submit chip was buried at end of rotating pool — only visible after 4 other chips were used | `ChatInterface` has `fixedChip` prop. Fixed chips are always rendered last, never added to `usedPromptChips`. Pool is capped at 2 when `fixedChip` is present so total visible stays at 3.
+
+[2026-04-07] | Prompt chips showed during active submission (after AI started asking for values) | Add `!messages.some(m => m.role === "user")` to the chips render condition. Chips are for conversation start only — suppress as soon as user has sent any message.
+
+[2026-04-07] | Quick reply chips and prompt chips both visible simultaneously | Prompt chips are already suppressed when `quickReplies.length > 0`. The user-message check is a separate, earlier gate.
+
+---
+
+## PDF Extraction
+
+[2026-04-07] | Scanned PDFs returned "can't read" error instead of being processed | Scanned PDFs (text < 100 chars) now stored as base64 with `extractionMethod: "pdf_document"`. Handler sends them as Anthropic `document` blocks. `AnthropicContentBlock` union extended with `document` type.
+
+[2026-04-07] | `detectDocumentTypes` only scanned first 2000 chars — missed keywords on later pages | Changed sample to 8000 chars. Combined financials (BS + IS + CF on pages 1-3) now detected correctly.
+
+[2026-04-07] | AI asked operator to confirm document type even when it could read the PDF content | DOCUMENT RECORDING section in both system prompts updated: Claude self-identifies document types from content. Only asks if type is genuinely unresolvable. Never asks for a document with standard financial statement headings.
+
+---
+
+## Firm Settings
+
+[2026-04-07] | "From Name" and "Firm Name" were two separate fields doing the same thing | Merged into one "Firm Name" field that saves to both `firms.name` (app-wide) and `emailSettings.fromName` (email sender). `saveFirmNameAction` updates firms table; `handleSave` passes `fromName: localFirmName` to `saveEmailSettingsAction`.
+
+[2026-04-07] | Firm name, from email were in Notifications tab — wrong location | Moved to General tab (renamed from Access). Rendered as "Firm Details" section with own Save button above "Team Access" section.
+
+---
+
+## Notifications
+
+[2026-04-07] | `!to.length` early return in email functions blocked in-app notifications even when email recipients ARE configured | Fixed: `!to.length` removed from early return; email-sending block now has `&& to.length > 0` guard internally. In-app notification block is unconditional (gated only by `firmId && *InAppEnabled`).
+
+[2026-04-07] | In-app notification titles used email subjects — too long, truncated in the bell panel | Replace `title: subject` with short specific strings: `"${companyName} submitted ${period}"`, `"${companyName}: ${periodLabel} submission voided"`, `"Portfolio digest — ${monthYear}"`, `"${firmName} — share data for ${companyName}"`. Never use email subject as in-app title.

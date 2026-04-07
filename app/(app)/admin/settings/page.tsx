@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { emailSettings, kpiDefinitions, users, companies, userAccessScopes } from "@/lib/db/schema";
+import { emailSettings, kpiDefinitions, users, companies, userAccessScopes, firms } from "@/lib/db/schema";
 import { eq, isNull, and, inArray } from "drizzle-orm";
 import { getCompanyFilterOptions } from "@/lib/server/analytics";
 import { SettingsClient } from "./client";
@@ -56,6 +56,8 @@ export default async function SettingsPage() {
 
   const filterOptions = getCompanyFilterOptions(user.firmId);
 
+  const firm = db.select({ name: firms.name }).from(firms).where(eq(firms.id, user.firmId)).get();
+
   return (
     <SettingsClient
       firmId={user.firmId}
@@ -67,6 +69,7 @@ export default async function SettingsPage() {
       userScopes={userScopes}
       funds={filterOptions.funds}
       industries={filterOptions.industries}
+      firmName={firm?.name ?? ""}
     />
   );
 }

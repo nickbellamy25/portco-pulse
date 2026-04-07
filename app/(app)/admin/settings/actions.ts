@@ -373,3 +373,15 @@ export async function saveFirmDocsAction(firmId: string, requiredDocs: string, r
     db.insert(schema.emailSettings).values({ firmId, ...payload } as any).run();
   }
 }
+
+export async function saveFirmNameAction(firmId: string, name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  db.update(schema.firms).set({ name: trimmed }).where(eq(schema.firms.id, firmId)).run();
+}
+
+export async function saveFirmEmailAction(firmId: string, fromEmail: string) {
+  const trimmed = fromEmail.trim();
+  if (!trimmed) return;
+  db.update(schema.emailSettings).set({ fromEmail: trimmed }).where(eq(schema.emailSettings.firmId, firmId)).run();
+}

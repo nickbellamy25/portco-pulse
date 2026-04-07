@@ -49,6 +49,9 @@ interface Props {
   hintText?: string;
   autoMessage?: string;
   promptChips?: string[];
+  fixedChip?: string;
+  compact?: boolean;
+  onMessagesChange?: (msgs: ChatMessage[]) => void;
 }
 
 export function ChatInterface({
@@ -65,6 +68,9 @@ export function ChatInterface({
   hintText,
   autoMessage,
   promptChips = [],
+  fixedChip,
+  compact = false,
+  onMessagesChange,
 }: Props) {
   // Restore submitted cards after the text history (they happened at the end of the prior session)
   const restoredMessages: ChatMessage[] = [
@@ -72,6 +78,11 @@ export function ChatInterface({
     ...initialSubmittedPayloads.map((p) => ({ role: "assistant" as const, content: "", submittedPayload: p })),
   ];
   const [messages, setMessages] = useState<ChatMessage[]>(restoredMessages);
+
+  useEffect(() => {
+    onMessagesChange?.(messages);
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [input, setInput] = useState("");
   const [pendingUploads, setPendingUploads] = useState<UploadResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -86,9 +97,11 @@ export function ChatInterface({
   const [contextPeriods, setContextPeriods] = useState(contextPeriod ?? "");
   const [contextDismissed, setContextDismissed] = useState(initialMessages.length > 0);
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoMessageSentRef = useRef(false);
+  const [usedPromptChips, setUsedPromptChips] = useState<Set<string>>(new Set());
   const fileUploadRef = useRef<FileUploadZoneHandle>(null);
 
   const sendMessage = useCallback(async (text: string, uploads: UploadResult[]) => {
@@ -269,6 +282,14 @@ export function ChatInterface({
     }
   }, [token, contextDismissed, contextDataTypes, contextPeriods]);
 
+  // Scroll to bottom on mount if there are initial messages
+  useEffect(() => {
+    if (initialMessages.length > 0) {
+      setTimeout(() => bottomRef.current?.scrollIntoView(), 50);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (autoMessage && !autoMessageSentRef.current) {
       autoMessageSentRef.current = true;
@@ -277,6 +298,12 @@ export function ChatInterface({
       return () => clearTimeout(t);
     }
   }, [autoMessage, sendMessage]);
+
+  useEffect(() => {
+    if (!input && textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  }, [input]);
 
   async function handleConfirm(editedPayload: SubmissionPayload) {
     setIsSubmitting(true);
@@ -455,8 +482,8 @@ export function ChatInterface({
               <div
                 className={
                   msg.role === "user"
-                    ? "max-w-[85%] px-4 py-2.5 rounded-2xl text-sm bg-primary text-primary-foreground rounded-br-md whitespace-pre-wrap"
-                    : "w-full overflow-x-auto px-4 py-2.5 rounded-2xl text-sm bg-muted text-foreground rounded-bl-md"
+                    ? `max-w-[85%] rounded-2xl rounded-br-md whitespace-pre-wrap bg-primary text-primary-foreground ${compact ? "px-3 py-2 text-xs" : "px-4 py-2.5 text-sm"}`
+                    : `w-full overflow-x-auto rounded-2xl rounded-bl-md bg-muted text-foreground ${compact ? "px-3 py-2 text-xs" : "px-4 py-2.5 text-sm"}`
                 }
               >
                 {msg.role === "assistant" ? (
@@ -496,22 +523,41 @@ export function ChatInterface({
         <div ref={bottomRef} />
       </div>
 
-      {/* Prompt chips — passed from parent (e.g. CompanyChat) */}
-      {promptChips.length > 0 && (
-        <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
-          {promptChips.map((chip) => (
-            <button
-              key={chip}
-              type="button"
-              onClick={() => sendMessage(chip, [])}
-              disabled={isLoading}
-              className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
-            >
-              {chip}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Prompt chips — show up to 3 unused chips from pool, rotate as used */}
+      {quickReplies.length === 0 && !messages.some(m => m.role === "user") && (() => {
+        const poolLimit = fixedChip ? 2 : 3;
+        const visibleChips = promptChips.filter((c) => !usedPromptChips.has(c)).slice(0, poolLimit);
+        if (visibleChips.length === 0 && !fixedChip) return null;
+        return (
+          <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
+            {visibleChips.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => {
+                  setUsedPromptChips((prev) => new Set([...prev, chip]));
+                  sendMessage(chip, []);
+                }}
+                disabled={isLoading}
+                className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                {chip}
+              </button>
+            ))}
+            {fixedChip && (
+              <button
+                key={fixedChip}
+                type="button"
+                onClick={() => sendMessage(fixedChip, [])}
+                disabled={isLoading}
+                className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                {fixedChip}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Quick reply chips */}
       {quickReplies.length > 0 && !isLoading && !pendingPayload && (
@@ -521,7 +567,7 @@ export function ChatInterface({
               key={i}
               type="button"
               onClick={() => sendMessage(reply, [])}
-              className="px-3 py-1.5 rounded-full border border-border bg-background text-sm text-foreground hover:border-primary/60 hover:bg-muted transition-colors"
+              className={`px-3 py-1.5 rounded-full border border-border bg-background text-foreground hover:border-primary/60 hover:bg-muted transition-colors ${compact ? "text-xs" : "text-sm"}`}
             >
               {reply}
             </button>
@@ -537,10 +583,11 @@ export function ChatInterface({
           if (e.dataTransfer.files.length > 0 && !pendingPayload) {
             fileUploadRef.current?.handleFiles(e.dataTransfer.files);
           }
+          setIsDraggingOver(false);
         }}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
-        onDragEnter={(e) => e.preventDefault()}
-        onDragLeave={(e) => e.preventDefault()}
+        onDragEnter={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
+        onDragLeave={() => setIsDraggingOver(false)}
       >
         <div className="flex flex-col gap-2">
           {!pendingPayload && (
@@ -558,12 +605,17 @@ export function ChatInterface({
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = Math.min(e.target.scrollHeight, 128) + "px";
+              }}
               onKeyDown={handleKeyDown}
               disabled={isLoading}
               placeholder="Message…"
-              rows={2}
-              className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              rows={1}
+              style={{ minHeight: "2.5rem", maxHeight: "128px", overflowY: "auto" }}
+              className={`flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${compact ? "text-xs" : "text-sm"} ${isDraggingOver ? "ring-2 ring-primary border-primary" : ""}`}
             />
             {!pendingPayload && (
               <button

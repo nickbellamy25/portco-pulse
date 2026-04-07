@@ -59,7 +59,6 @@ type SubmissionNotificationParams = {
 
 export async function sendSubmissionNotificationEmail(params: SubmissionNotificationParams) {
   const { to, companyName, period, submissionTime, isResubmission, settings, firmId, companyId } = params;
-  if (!to.length) return;
   if (!settings?.submissionNotificationEnabled && !(settings as any)?.submissionNotificationInAppEnabled) return;
 
   const vars = {
@@ -82,7 +81,7 @@ export async function sendSubmissionNotificationEmail(params: SubmissionNotifica
     vars
   );
 
-  if (settings?.submissionNotificationEnabled) {
+  if (settings?.submissionNotificationEnabled && to.length > 0) {
     if (!resend || process.env.RESEND_API_KEY === "re_placeholder") {
       console.log(`[EMAIL] To: ${to.join(", ")}\nSubject: ${subject}\n${body}`);
     } else {
@@ -100,7 +99,7 @@ export async function sendSubmissionNotificationEmail(params: SubmissionNotifica
     await createInAppNotifications({
       firmId,
       eventType: "submission_received",
-      title: subject,
+      title: `${companyName} submitted ${period}`,
       body: `${companyName} submitted data for ${period}.`,
       companyId,
       periodMonth: period,
@@ -123,7 +122,6 @@ type SubmissionVoidedParams = {
 
 export async function sendSubmissionVoidedEmail(params: SubmissionVoidedParams) {
   const { to, companyName, submissionType, periodLabel, voidedDate, voidReason, settings, firmId, companyId } = params;
-  if (!to.length) return;
   if (!(settings as any)?.submissionVoidedEnabled && !(settings as any)?.submissionVoidedInAppEnabled) return;
 
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -147,7 +145,7 @@ export async function sendSubmissionVoidedEmail(params: SubmissionVoidedParams) 
   }
   const body = interpolate(bodyTemplate, vars);
 
-  if ((settings as any)?.submissionVoidedEnabled) {
+  if ((settings as any)?.submissionVoidedEnabled && to.length > 0) {
     if (!resend || process.env.RESEND_API_KEY === "re_placeholder") {
       console.log(`[EMAIL - submission voided] To: ${to.join(", ")}\nSubject: ${subject}\n${body}`);
     } else {
@@ -165,8 +163,8 @@ export async function sendSubmissionVoidedEmail(params: SubmissionVoidedParams) 
     await createInAppNotifications({
       firmId,
       eventType: "submission_voided",
-      title: subject,
-      body: `${companyName}'s ${submissionType} was voided.`,
+      title: `${companyName}: ${periodLabel} submission voided`,
+      body: voidReason ? `Reason: ${voidReason}` : `${companyName}'s ${submissionType} has been removed.`,
       companyId,
       periodMonth: periodLabel,
       linkUrl: link,
@@ -342,7 +340,7 @@ export async function sendMonthlyDigestEmail(params: MonthlyDigestParams) {
     await createInAppNotifications({
       firmId,
       eventType: "monthly_digest",
-      title: subject,
+      title: `Portfolio digest — ${monthYear}`,
       body: `${submittedCount}/${totalCompanies} companies submitted. ${activeAlerts} active alert${activeAlerts !== 1 ? "s" : ""}.`,
       linkUrl: buildNotificationLink("monthly_digest"),
     });
@@ -691,8 +689,8 @@ export async function sendOnboardingRequestEmail({
     await createInAppNotifications({
       firmId,
       eventType: "onboarding_request",
-      title: subject,
-      body: `Submit your historical financial data to set up your profile on PortCo Pulse.`,
+      title: `${firmName} — share data for ${companyName}`,
+      body: `Submit historical financial data to complete onboarding for ${companyName}.`,
       linkUrl: chatLink,
       userIds: operatorUserIds,
     });

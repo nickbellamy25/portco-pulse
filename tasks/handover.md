@@ -1,8 +1,8 @@
 # Handover — PortCo Pulse
 
-## Current state (as of 2026-04-06)
+## Current state (as of 2026-04-07)
 
-The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is partially done. This session focused entirely on Pulse AI chat pane quality: system prompt improvements, response format, collapsed tab layout, contextual chips, session persistence, and notification routing.
+The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. This session focused on: chat chip + submission refactor (Part 1 + Part 2), multiple UX fixes, PDF extraction improvements, firm name editing, Firm Settings restructure, and notification polish.
 
 ---
 
@@ -110,14 +110,106 @@ Six chat pane fixes:
 
 ---
 
+### Session 2026-04-07 — Chat quality audit + UX improvements
+
+**Unified chat message persistence:**
+- Single `chatMessages` state in `PersistentChatPanel` (sessionStorage key `pulse_chat_messages_v1`) shared between `PortfolioQAPane` and `CompanyChat`
+- `ChatInterface` gains optional `onMessagesChange` callback — fires on every messages state change
+- `CompanyChat` receives `messages` + `onMessagesChange` props; uses persisted messages if available, falls back to `ctx.initialMessages`
+- Company-switch reset: `prevCompanyIdRef` detects switching between two non-null companies and clears `chatMessages`; portfolio↔company navigation preserves history
+
+**System prompt quality audit (all tabs):**
+- `assembleSystemPrompt` (company chat — Analytics, operator submission, plan): upgraded ANSWERING KPI QUESTIONS section to match portfolio Q&A rules — no declarative opener, compute-first sort, bold table headers + most-relevant row, omit conclusion if self-evident, no seasonal/run-rate commentary, no narration
+- Both prompts: added PE analyst judgment rule — standard terms ("active KPI alerts", "at risk of missing deadline", "this period", etc.) are interpreted directly, never asked about
+- Both prompts: "pick best interpretation and answer it" rule — no "if you meant X" hedging, no explaining data gaps unless question literally can't be answered
+- Clarifying questions only when question is truly unresolvable (e.g. "show me the data" with no KPI/period/company)
+
+**Chat UX improvements:**
+- Chip rotation: clicking a chip replaces it with the next unused one from an extended pool; `usedChips` state resets on pathname change
+- Dashboard pool: 8 chips. Submissions: 3 static + dynamic reminder chips. Company chat: 6 chips.
+- Max 3 chips visible at any time
+- Chat pane draggable from left edge (min 320px, max 640px); resets to 384px on collapse
+- Textarea auto-expands with content up to 128px; resets on send
+- `ChatInterface` gets `compact` prop — when true (panel context), uses `text-xs` + smaller padding matching PortfolioQAPane style
+
+**Bug fixes:**
+- `analytics.ts:1096`: `status is not defined` — changed to `baseStatus` (caused crash when navigating to old period on Submissions)
+- Font mismatch: Analytics chat was `text-sm`, Dashboard/Submissions was `text-xs` — fixed via `compact` prop
+
+**AI settings editing — decided against:**
+- Discussed AI-driven KPI settings editing via chat; decided it's overreach for this stage
+- Reasons: high-stakes changes, confirmation fatigue risk, audit trail concerns, form UI is 3 clicks away
+- Settings chips will be informational only (read KPI rules, show thresholds) — no mutations via chat
+
+---
+
+### Session 2026-04-07 (continued) — Chat chip refactor + UX fixes
+
+**Chat chip + submission refactor (Part 1 + Part 2 — plan complete):**
+- `ChatInterface` gains `fixedChip?: string` prop — always visible, never consumed by `usedPromptChips`. Pool capped at 2 when fixedChip is set.
+- `CompanyChat`: Analytics now passes `ANALYTICS_CHIP_POOL` as `promptChips` (6 chips, 2 visible) + `fixedChip="Submit this period's data for {company}"` always pinned as slot 3.
+- Company Settings: keeps 3 fixed chips (`promptChips`), no `fixedChip`.
+- Auto-submit on company picker selection: override `CompanyChat` receives `autoSubmit={true}` → passes `autoMessage` to `ChatInterface` → immediately fires submission message when company is selected from picker.
+- Prompt chips suppressed after first user message: `!messages.some(m => m.role === "user")` added to chip render condition.
+- System prompt: "Most at risk" definition added to `assembleSystemPrompt` (was only in portfolioQA).
+
+**PDF extraction fixes:**
+- `app/api/upload/route.ts`: scanned PDFs now sent as native Anthropic `document` blocks (base64) instead of returning "can't read" error. New `extractionMethod: "pdf_document"`, `pdfBase64` field added to `UploadResult`.
+- `lib/chat/session.ts`: `AnthropicContentBlock` extended with `document` type.
+- `lib/chat/handler.ts`: new branch handles `pdf_document` extraction method.
+- `detectDocumentTypes` sample widened from 2000 → 8000 chars so keywords on later pages (page 2 income statement, page 3 cash flow) are caught.
+- Both system prompts: DOCUMENT RECORDING section strengthened — Claude reads document content and self-identifies types (including combined_financials) without asking operator. Only asks when type is truly unresolvable.
+
+**Drag visual on textarea:**
+- `ChatInterface`: `isDraggingOver` state added. Textarea shows `ring-2 ring-primary border-primary` on drag-over.
+
+**Scroll to bottom on mount:**
+- `PortfolioQAPane` and `ChatInterface` both now scroll to bottom on mount when existing messages are present. Fixes "loads at top" bug after navigation.
+
+**Duplicate chips fix:**
+- Prompt chips suppressed when `quickReplies.length > 0` (AI quick-reply chips take over during submission flow).
+
+**Notifications:**
+- `sendSubmissionNotificationEmail` and `sendSubmissionVoidedEmail`: removed `!to.length` early return that was blocking in-app notifications when no email recipients configured. Email sending now gated by `to.length > 0` inside the email block only.
+- Topbar notification poll: 30s → 10s.
+- In-app notification titles rewritten to be short and clear (all 4 that used email subject as title): submission_received, submission_voided, monthly_digest, onboarding_request.
+
+**Firm name + Firm Settings restructure:**
+- `firms.name` is now editable via Firm Settings.
+- `saveFirmNameAction` + `saveFirmEmailAction` added to `actions.ts`.
+- Firm Settings tab renamed "Access" → "General". First section is "Firm Details" (Firm Name + From Email, their own Save button). Second section is "Team Access".
+- "Firm Name" and "From Name" merged into one field — saves to both `firms.name` and `emailSettings.fromName`.
+- "From Email" moved from Notifications tab to General tab.
+- Notifications tab now only has the event table (no firm config fields).
+
+---
+
 ## What's next — Phase 3 remaining
 
-1. **Wire company-specific KPIs into chat submission** — custom KPIs added in Company Settings don't appear in the operator's chat submission flow
-2. **Fix variance coloring for lower-is-better KPIs** — positive variance is always green, even for CapEx above plan (should be red)
-3. **Submission Tracking UX review** — detailed review pass; functional but may have rough edges
-4. **Verify chat-submitted data surfaces in Submission Tracking matrix**
-5. **Combined financials edge case** — operator uploads doc covering multiple statement types
-6. **Blocklist mode for member access scopes** — only allowlist supported
+### Planned next session — Chat chip + submission refactor (plan saved at `tasks/plan.md` and `.claude/plans/humming-kindling-bubble.md`)
+
+**Part 1 — Refined chip pools + fixed submit chip:**
+- Dashboard: 6 rotating chips (2 visible) + "Submit data for a company →" fixed in slot 3
+- Submissions: "Submit data for a company →" fixed in slot 1, 2 rotating from 4-chip pool
+- Analytics: 6 rotating (2 visible) + "Submit this period's data for {company}" fixed in slot 3
+- Company Settings: 3 fixed chips — "What are {company}'s current KPI rules?", "Show {company}'s current alert thresholds", "Submit this period's data for {company}"
+- Firm Settings: 3 fixed chips — "What are the current firmwide KPI thresholds?", "Which KPIs have alert rules configured?", "Submit data for a company →"
+- Remove chip suppression on `/admin/settings` and `/settings`
+- System prompt: add "most at risk" definition (2+ of: plan miss, negative MoM trend, active alert)
+
+**Part 2 — Submit from any page:**
+- `submissionOverrideId` state in `PersistentChatPanel` — when set, overrides URL-based company and renders CompanyChat
+- "Submit data for a company →" chip on Dashboard/Submissions/Firm Settings opens inline company picker
+- "← Portfolio chat" back button exits submission override mode
+- New `GET /api/companies` endpoint if it doesn't exist
+
+**Other Phase 3 remaining:**
+1. Wire company-specific KPIs into chat submission
+2. Fix variance coloring for lower-is-better KPIs (CapEx, Churn Rate, etc.)
+3. Submission Tracking UX review
+4. Verify chat-submitted data surfaces in Submission Tracking matrix
+5. Combined financials edge case
+6. Blocklist mode for member access scopes
 
 ---
 
@@ -139,6 +231,16 @@ Six chat pane fixes:
 - **Portfolio Q&A response format**: context line → sorted table (all rows ranked) → conclusion only if it adds information not visible in the table
 - **Chips**: always visible (not empty-state only); click auto-submits; `autoMessageSentRef` guards against re-fire on re-render
 - **Notification routing**: `/submit/` and `/onboard/` links are intercepted for firm users and redirected to `/submissions`
+- **AI settings editing via chat**: decided against — overreach at this stage. Settings chips are informational only (read-only answers about current config). Mutations stay in the form UI.
+- **Chat message persistence**: single `chatMessages` sessionStorage store shared across all chat modes. Company switch resets; portfolio↔company nav preserves.
+- **`compact` prop on ChatInterface**: when rendered in the panel (`CompanyChat`), use `text-xs` + smaller padding. Operator submission page stays at `text-sm`.
+- **Chip rotation**: `usedChips` Set state per component; chips reset on pathname change; max 3 visible. Fixed chips (submit, informational) never enter the rotation pool.
+- **fixedChip prop on ChatInterface**: fixed chips never enter usedPromptChips rotation; pool capped at 2 when fixedChip is present; always rendered last.
+- **Prompt chips suppressed after first user message**: `!messages.some(m => m.role === "user")` gates the entire chip block. Chips are conversation starters only.
+- **Scanned PDFs**: sent to Claude as native `document` blocks (base64). Non-scanned PDFs: text extracted, detection window 8000 chars.
+- **Firm Settings General tab**: "Firm Name" (→ firms.name + emailSettings.fromName) + "From Email" in their own section with dedicated Save button. Tab renamed General; subheadings: Firm Details, Team Access.
+- **In-app notification titles**: always short and specific (company + period/event), never email subject string.
+- **Topbar notification poll**: 10s interval.
 
 ---
 

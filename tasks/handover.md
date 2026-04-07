@@ -72,6 +72,20 @@ The app is fully functional as a local prototype. All Phase 1 + Phase 2 features
 
 ---
 
+### Session 2026-04-06 (continued) — Chat pane polish pass 2
+
+- Removed company context pill from expanded panel header (was reverting)
+- Both collapsed/expanded "Pulse AI" labels now use `text-muted-foreground` (consistent gray)
+- Panel collapses on page navigation via pathname useEffect with prevPathnameRef mount guard
+- Company chips moved to bottom: removed from above ChatInterface, now passed as `promptChips` prop rendered above input
+- Chips suppressed on `/admin/settings` and `/settings` routes
+- `ChatInterface` assistant bubbles: `w-full overflow-x-auto` (was `max-w-[80%]` shared with user bubbles)
+- Submission Tracking: new `GET /api/submissions/outstanding` endpoint; dynamic reminder chip names specific companies; confirmation flow in chat before calling `sendRemindersAction(firmId, periodId)`; static chips updated to action-oriented
+- System prompt sort rule: sort by answering metric (growth % not absolute), compute before writing
+- System prompt conclusion rule: forbids seasonal notes, run-rate commentary, Note paragraphs unless data limitation
+
+---
+
 ## What's next — Phase 3 remaining
 
 1. **Wire company-specific KPIs into chat submission** — custom KPIs added in Company Settings don't appear in the operator's chat submission flow

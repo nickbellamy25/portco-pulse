@@ -76,7 +76,7 @@ export default async function SubmitPage({
     .filter((d) => ["currency", "percent", "integer"].includes(d.valueType));
 
   // Unified session key — same for all modes (periodic, onboarding, plan)
-  const sessionKey = deriveSessionKey(token, session.user.id);
+  const sessionKey = deriveSessionKey(token, (session.user as any).id);
   const history = loadHistory(sessionKey);
 
   // Build full initial message list in chronological order, interleaving text messages
@@ -144,7 +144,7 @@ export default async function SubmitPage({
           firmName={firmName}
           initialMessages={allInitialMessages as any}
           enabledKpis={kpiDefs.map((d) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType }))}
-          submittedByUserId={session.user.id}
+          submittedByUserId={(session.user as any).id}
           mode={chatMode}
           chatEndpoint={chatMode === "onboarding" ? "/api/chat/onboard" : "/api/chat/submit"}
           contextPeriod={contextPeriod}

@@ -108,7 +108,7 @@ function KpiChip({ status }: { status: SubmissionTrackingRow["status"] }) {
     : "KPIs — not submitted";
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
       <Tooltip>
         <TooltipTrigger>
           <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border cursor-default select-none ${chipClass}`}>
@@ -152,7 +152,7 @@ function DocChip({
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
       <Tooltip>
         <TooltipTrigger>
           <span

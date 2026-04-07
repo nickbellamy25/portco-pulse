@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChatContext } from "@/components/layout/chat-context";
 import { ChatInterface } from "@/app/submit/[token]/_components/ChatInterface";
+import { sendRemindersAction } from "@/app/(app)/submissions/actions";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,6 +64,23 @@ export function PersistentChatPanel({
   firmId,
 }: PersistentChatPanelProps) {
   const { chatOpen, toggleChat } = useChatContext();
+  const pathname = usePathname();
+  const prevPathnameRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // First run: record initial pathname, don't collapse
+    if (prevPathnameRef.current === null) {
+      prevPathnameRef.current = pathname;
+      return;
+    }
+    // Subsequent runs: collapse if navigated away and panel is open
+    if (prevPathnameRef.current !== pathname) {
+      if (chatOpen) {
+        toggleChat();
+      }
+      prevPathnameRef.current = pathname;
+    }
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -84,7 +102,7 @@ export function PersistentChatPanel({
         >
           <div style={{ transform: "rotate(270deg)", display: "flex", alignItems: "center", gap: "8px", whiteSpace: "nowrap" }}>
             <MessageSquare className="h-3.5 w-3.5 text-green-600 shrink-0" />
-            <span className="text-[13px] font-medium" style={{ color: "black" }}>Pulse AI</span>
+            <span className="text-[13px] font-medium text-muted-foreground shrink-0">Pulse AI</span>
           </div>
         </button>
       )}
@@ -124,6 +142,7 @@ interface ChatPanelExpandedProps {
 function ChatPanelExpanded({
   persona,
   userCompanyId,
+  firmId,
   onCollapse,
 }: ChatPanelExpandedProps) {
   const pathname = usePathname();
@@ -169,14 +188,6 @@ function ChatPanelExpanded({
       .finally(() => setLoading(false));
   }, [targetCompanyId, persona]);
 
-  // Context badge
-  const badge =
-    ctx?.kind === "company" ? (
-      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full border bg-green-50 text-green-700 border-green-200 truncate max-w-[160px]">
-        {ctx.companyName}
-      </span>
-    ) : null;
-
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-background">
       {/* Header */}
@@ -184,7 +195,6 @@ function ChatPanelExpanded({
         <div className="flex items-center gap-2 min-w-0">
           <MessageSquare className="h-3.5 w-3.5 text-green-600 shrink-0" />
           <span className="text-[13px] font-medium text-muted-foreground shrink-0">Pulse AI</span>
-          {badge}
         </div>
         <button
           type="button"
@@ -209,7 +219,11 @@ function ChatPanelExpanded({
             </p>
           </div>
         ) : ctx.kind === "portfolio" ? (
-          <PortfolioQAPane messages={portfolioMessages} setMessages={setPortfolioMessages} />
+          <PortfolioQAPane
+            messages={portfolioMessages}
+            setMessages={setPortfolioMessages}
+            firmId={firmId}
+          />
         ) : (
           <CompanyChat ctx={ctx} />
         )}
@@ -224,12 +238,18 @@ function ChatPanelExpanded({
 
 function CompanyChat({ ctx }: { ctx: CompanyContext }) {
   const [pendingChip, setPendingChip] = useState<string | null>(null);
+  const pathname = usePathname();
 
   const companyChips = [
     `How is ${ctx.companyName} tracking against plan?`,
     `Show ${ctx.companyName}'s revenue trend`,
     `What are ${ctx.companyName}'s latest KPIs?`,
   ];
+
+  const promptChips =
+    pathname.startsWith("/admin/settings") || pathname === "/settings"
+      ? []
+      : companyChips;
 
   const initialMessages: InitialMsg[] =
     ctx.initialMessages && ctx.initialMessages.length > 0
@@ -240,19 +260,6 @@ function CompanyChat({ ctx }: { ctx: CompanyContext }) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Contextual chips */}
-      <div className="shrink-0 px-3 pt-2 pb-1 flex flex-wrap gap-1.5 border-b border-border">
-        {companyChips.map((chip) => (
-          <button
-            key={chip}
-            type="button"
-            onClick={() => setPendingChip(chip)}
-            className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors"
-          >
-            {chip}
-          </button>
-        ))}
-      </div>
       <ChatInterface
         token={ctx.token}
         companyName={ctx.companyName}
@@ -264,6 +271,7 @@ function CompanyChat({ ctx }: { ctx: CompanyContext }) {
         mode={ctx.chatMode}
         chatEndpoint={ctx.chatEndpoint}
         autoMessage={pendingChip ?? undefined}
+        promptChips={promptChips}
       />
     </div>
   );
@@ -281,14 +289,46 @@ interface QAMessage {
 interface PortfolioQAPaneProps {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   setMessages: React.Dispatch<React.SetStateAction<Array<{ role: "user" | "assistant"; content: string }>>>;
+  firmId: string | undefined;
 }
 
-function PortfolioQAPane({ messages, setMessages }: PortfolioQAPaneProps) {
+function PortfolioQAPane({ messages, setMessages, firmId }: PortfolioQAPaneProps) {
   const pathname = usePathname();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [outstandingData, setOutstandingData] = useState<{
+    periodId: string;
+    period: string;
+    outstanding: Array<{ companyId: string; companyName: string }>;
+  } | null>(null);
+  const [pendingReminder, setPendingReminder] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fetch outstanding submissions when on /submissions
+  useEffect(() => {
+    if (pathname !== "/submissions") {
+      setOutstandingData(null);
+      return;
+    }
+    fetch("/api/submissions/outstanding")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.outstanding && Array.isArray(data.outstanding)) {
+          setOutstandingData(data);
+        }
+      })
+      .catch(() => {});
+  }, [pathname]);
+
+  function buildReminderChipLabel(companies: Array<{ companyName: string }>): string {
+    const names = companies.map((c) => c.companyName.split(" ")[0]);
+    if (names.length === 1) return `Send reminder to ${names[0]}`;
+    if (names.length === 2) return `Send reminders to ${names[0]} & ${names[1]}`;
+    if (names.length === 3) return `Send reminders to ${names[0]}, ${names[1]} & ${names[2]}`;
+    return `Send reminders to ${names[0]}, ${names[1]} & ${names.length - 2} more`;
+  }
 
   const chips: string[] = (() => {
     if (pathname === "/dashboard") return [
@@ -297,11 +337,16 @@ function PortfolioQAPane({ messages, setMessages }: PortfolioQAPaneProps) {
       "Who's behind on plan YTD?",
       "Any active KPI alerts?",
     ];
-    if (pathname === "/submissions") return [
-      "Which companies haven't submitted this period?",
-      "Show submission status this month",
-      "Who submitted most recently?",
-    ];
+    if (pathname === "/submissions") {
+      const staticChips = [
+        "Who hasn't submitted this period?",
+        "Which company submitted most recently?",
+      ];
+      if (outstandingData && outstandingData.outstanding.length > 0) {
+        staticChips.push(buildReminderChipLabel(outstandingData.outstanding));
+      }
+      return staticChips;
+    }
     return [];
   })();
 
@@ -411,6 +456,48 @@ function PortfolioQAPane({ messages, setMessages }: PortfolioQAPaneProps) {
     [isLoading]
   );
 
+  function handleChipClick(chip: string) {
+    if (chip.startsWith("Send reminder")) {
+      // Confirmation flow — don't send to AI
+      if (!outstandingData) return;
+      const names = outstandingData.outstanding.map((c) => c.companyName);
+      const nameStr =
+        names.length === 1
+          ? names[0]
+          : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: chip },
+        { role: "assistant", content: `I'll send submission reminders to ${nameStr}. Confirm?` },
+      ]);
+      setPendingReminder(true);
+    } else {
+      sendMessage(chip);
+    }
+  }
+
+  async function handleConfirmReminder() {
+    if (!outstandingData || !firmId) return;
+    setPendingReminder(false);
+    setSendingReminders(true);
+    try {
+      const result = await sendRemindersAction(firmId, outstandingData.periodId);
+      setMessages((prev) => [...prev, { role: "assistant", content: result.message }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Failed to send reminders. Check email configuration." },
+      ]);
+    } finally {
+      setSendingReminders(false);
+    }
+  }
+
+  function handleCancelReminder() {
+    setPendingReminder(false);
+    setMessages((prev) => [...prev, { role: "assistant", content: "Cancelled." }]);
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -491,13 +578,34 @@ function PortfolioQAPane({ messages, setMessages }: PortfolioQAPaneProps) {
       {/* Footer */}
       <div className="shrink-0 border-t border-border px-3 pt-2 pb-2">
 
+        {pendingReminder && (
+          <div className="flex gap-2 mb-2">
+            <button
+              type="button"
+              onClick={handleConfirmReminder}
+              disabled={sendingReminders}
+              className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {sendingReminders ? "Sending..." : "Yes, send"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelReminder}
+              disabled={sendingReminders}
+              className="px-3 py-1 rounded-md border border-border bg-background text-xs text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
         {chips.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {chips.map((chip) => (
               <button
                 key={chip}
                 type="button"
-                onClick={() => sendMessage(chip)}
+                onClick={() => handleChipClick(chip)}
                 disabled={isLoading}
                 className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
               >

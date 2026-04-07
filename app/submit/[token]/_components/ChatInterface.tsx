@@ -48,6 +48,7 @@ interface Props {
   contextPeriod?: string;  // pre-filled period from URL param (e.g. reminder link with ?period=April 2026)
   hintText?: string;
   autoMessage?: string;
+  promptChips?: string[];
 }
 
 export function ChatInterface({
@@ -63,6 +64,7 @@ export function ChatInterface({
   contextPeriod,
   hintText,
   autoMessage,
+  promptChips = [],
 }: Props) {
   // Restore submitted cards after the text history (they happened at the end of the prior session)
   const restoredMessages: ChatMessage[] = [
@@ -450,11 +452,11 @@ export function ChatInterface({
           return (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm ${
+                className={
                   msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-md whitespace-pre-wrap"
-                    : "bg-muted text-foreground rounded-bl-md"
-                }`}
+                    ? "max-w-[85%] px-4 py-2.5 rounded-2xl text-sm bg-primary text-primary-foreground rounded-br-md whitespace-pre-wrap"
+                    : "w-full overflow-x-auto px-4 py-2.5 rounded-2xl text-sm bg-muted text-foreground rounded-bl-md"
+                }
               >
                 {msg.role === "assistant" ? (
                   <>
@@ -492,6 +494,23 @@ export function ChatInterface({
 
         <div ref={bottomRef} />
       </div>
+
+      {/* Prompt chips — passed from parent (e.g. CompanyChat) */}
+      {promptChips.length > 0 && (
+        <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
+          {promptChips.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => sendMessage(chip, [])}
+              disabled={isLoading}
+              className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Quick reply chips */}
       {quickReplies.length > 0 && !isLoading && !pendingPayload && (

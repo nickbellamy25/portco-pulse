@@ -134,3 +134,15 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-06] | Collapsed tab writing-mode/rotation iterated many times without convergence | FINAL SOLUTION for collapsed vertical tab: render icon + label as a normal horizontal flex row (identical to expanded header: `flex items-center gap-2`), then rotate the entire container with `transform: rotate(270deg)` as a single unit. No writing-mode, no per-element rotation. Any future change to the tab must follow this pattern — do not reintroduce writing-mode.
 
 [2026-04-06] | autoMessage prop in ChatInterface could re-fire on re-render | Guard with `useRef`: `const autoMessageSentRef = useRef(false)`. Set to true before calling sendMessage. Never use useState for this guard — it causes an extra render cycle.
+
+[2026-04-06] | Company context pill (green badge) reverted in chat panel header | Delete the `badge` variable entirely from ChatPanelExpanded — never re-add. Company name is implied by the chat context.
+
+[2026-04-06] | Company chips rendered above ChatInterface instead of at bottom | Always pass chips via `promptChips` prop to ChatInterface; never render a chip div above the component. ChatInterface renders them above its own input area.
+
+[2026-04-06] | Chat panel stayed open when navigating between pages | Add a pathname-watching useEffect in PersistentChatPanel (outer component) that collapses if chatOpen is true on route change. Guard with prevPathnameRef to skip mount.
+
+[2026-04-06] | Submission Tracking chips were generic status questions visible on the page | Chips on /submissions must be action-oriented. Static: "Who hasn't submitted this period?", "Which company submitted most recently?". Dynamic reminder chip: only show if outstanding companies exist, name them, trigger confirmation flow before calling sendRemindersAction.
+
+[2026-04-06] | Chat Q&A tables still not sorted by relevant metric in growth questions | Sort rule must be explicit: sort by the metric that answers the question (e.g. for growth questions sort by growth %, not absolute value). Compute full sort before writing context line. This is in assemblePortfolioQASystemPrompt.
+
+[2026-04-06] | Chat Q&A conclusions still verbose with seasonal notes and run-rate commentary | Conclusion rule must explicitly forbid: seasonal explanations, run-rate commentary, interpretations of why the winner won. Only add conclusion for structural data limitations causing misinterpretation.

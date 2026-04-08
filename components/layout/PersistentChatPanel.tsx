@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { MessageSquare, PanelRightClose, Loader2, X, ChevronLeft } from "lucide-react";
+import { MessageSquare, PanelRightClose, Loader2, X } from "lucide-react";
 import { useChatContext } from "@/components/layout/chat-context";
 import { ChatInterface } from "@/app/submit/[token]/_components/ChatInterface";
 import type { UploadResult } from "@/app/api/upload/route";
@@ -220,11 +220,9 @@ function ChatPanelExpanded({
   function handleSelectCompany(companyId: string) {
     setShowCompanyPicker(false);
     setActiveCompanyId(companyId);
-    // If files were pending (from drop), set auto message
+    // Only auto-send when files were pending (from drop) — otherwise let user pick from chips
     if (pendingFiles.length > 0) {
       setPendingAutoMessage(`Submitting actuals for the current period. Extract all KPI values from the attached file(s).`);
-    } else {
-      setPendingAutoMessage(`Submit this period's data`);
     }
   }
 
@@ -256,10 +254,15 @@ function ChatPanelExpanded({
   const COMPANY_CHIPS_FN = (name: string) => [
     `How is ${name} tracking against plan?`,
     `Any active KPI alerts for ${name}?`,
-    `Show ${name}'s headcount trend`,
     `What's ${name}'s worst performing KPI vs plan?`,
-    `Is ${name} on track to hit its annual plan?`,
+    `Show ${name}'s headcount trend`,
     `How does ${name}'s margin compare to last period?`,
+  ];
+
+  const SUBMISSION_CHIPS_FN = (name: string) => [
+    `Submit this period's actuals for ${name}`,
+    `Submit annual plan data for ${name}`,
+    `Submit historical / onboarding data for ${name}`,
   ];
 
   const isDashboard = pathname === "/dashboard";
@@ -267,9 +270,12 @@ function ChatPanelExpanded({
   const isFirmSettings = pathname === "/admin/settings" || pathname === "/settings";
 
   function buildChips(): string[] {
-    // When company is active, show company-specific chips
+    // When company is active, show submission + Q&A chips
     if (effectiveCompanyId && companyMeta) {
-      return COMPANY_CHIPS_FN(companyMeta.companyName).slice(0, 3);
+      return [
+        ...SUBMISSION_CHIPS_FN(companyMeta.companyName),
+        ...COMPANY_CHIPS_FN(companyMeta.companyName),
+      ];
     }
 
     // Portfolio Q&A chips
@@ -306,16 +312,24 @@ function ChatPanelExpanded({
         </button>
       </div>
 
-      {/* Back to portfolio (when company is active and user chose it manually) */}
-      {activeCompanyId && !operatorCompanyId && (
-        <button
-          type="button"
-          onClick={handleBackToPortfolio}
-          className="flex items-center gap-1 px-3 py-1 text-xs text-muted-foreground hover:text-foreground border-b border-border w-full transition-colors shrink-0"
-          aria-label="Back"
-        >
-          <ChevronLeft className="h-3 w-3" />
-        </button>
+      {/* Company context bar — shows which company the chat is scoped to */}
+      {effectiveCompanyId && companyMeta && !operatorCompanyId && (
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/50 shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[10px] text-muted-foreground shrink-0">Submitting for</span>
+            <span className="text-[10px] font-semibold text-foreground truncate">{companyMeta.companyName}</span>
+          </div>
+          {/* Only show Exit when company was manually selected (not auto-set from page URL) */}
+          {activeCompanyId && !companyIdFromUrl && (
+            <button
+              type="button"
+              onClick={handleBackToPortfolio}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-2"
+            >
+              ✕ Exit
+            </button>
+          )}
+        </div>
       )}
 
       {/* Company picker overlay */}

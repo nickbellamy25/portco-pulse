@@ -9,7 +9,7 @@ import type { UploadResult } from "@/app/api/upload/route";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-type DataType = "actuals" | "plan";
+type DataType = "actuals" | "plan" | "onboarding";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -125,7 +125,7 @@ export function ChatInterface({
     // Capture and dismiss context panel on first send
     const isFirstSend = !contextDismissed;
     const sendContextDataType = isFirstSend && contextDataTypes.size > 0
-      ? (contextDataTypes.size === 2 ? "both" : [...contextDataTypes][0])
+      ? [...contextDataTypes].join(",")
       : undefined;
     const sendContextPeriods = isFirstSend && contextPeriods.trim() ? contextPeriods.trim() : undefined;
     if (isFirstSend) setContextDismissed(true);
@@ -441,13 +441,13 @@ export function ChatInterface({
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
         {/* Optional context panel — shown on fresh periodic sessions until first send */}
-        {mode === "periodic" && !contextDismissed && companyId && (
-          <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-4 text-sm">
+        {!contextDismissed && companyId && (
+          <div className="rounded-xl border border-border bg-muted/40 p-3 space-y-3 text-xs">
             {/* Row 1: data type */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               <span className="font-medium text-foreground">What data are you submitting?</span>
-              <div className="flex gap-2">
-                {(["Actuals", "Plan"] as const).map((label) => {
+              <div className="flex gap-1.5">
+                {(["Actuals", "Plan", "Onboarding"] as const).map((label) => {
                   const value = label.toLowerCase() as DataType;
                   const selected = contextDataTypes.has(value);
                   return (
@@ -459,7 +459,7 @@ export function ChatInterface({
                         next.has(value) ? next.delete(value) : next.add(value);
                         return next;
                       })}
-                      className={`px-3 py-1.5 rounded-md border text-sm font-medium transition-colors ${
+                      className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors ${
                         selected
                           ? "bg-primary text-primary-foreground border-primary"
                           : "bg-background text-foreground border-border hover:border-primary/60"
@@ -473,7 +473,7 @@ export function ChatInterface({
             </div>
 
             {/* Row 2: period(s) */}
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <span className="font-medium text-foreground">Which period(s) are you submitting for?</span>
               <input
                 type="text"
@@ -481,9 +481,9 @@ export function ChatInterface({
                 onChange={(e) => setContextPeriods(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); textareaRef.current?.focus(); } }}
                 placeholder="e.g. March 2025, or Q1 2025"
-                className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
-              <span className="text-xs text-muted-foreground">Only data from periods you list will be collected.</span>
+              <span className="text-[10px] text-muted-foreground">{contextDataTypes.has("onboarding") ? "List the range of historical periods, e.g. Jan 2023 – Dec 2025." : "Only data from periods you list will be collected."}</span>
             </div>
 
           </div>
@@ -711,7 +711,7 @@ export function ChatInterface({
           e.preventDefault();
           dragCounter.current = 0;
           setIsDraggingOver(false);
-          if (e.dataTransfer.files.length > 0 && !pendingPayload) {
+          if (e.dataTransfer.files.length > 0 && !pendingPayload && (token || companyId)) {
             fileUploadRef.current?.handleFiles(e.dataTransfer.files);
           }
         }}
@@ -720,7 +720,7 @@ export function ChatInterface({
         onDragLeave={() => { dragCounter.current--; if (dragCounter.current <= 0) { dragCounter.current = 0; setIsDraggingOver(false); } }}
       >
         <div className="flex flex-col gap-2">
-          {!pendingPayload && (
+          {!pendingPayload && (token || companyId) && (
             <FileUploadZone
               ref={fileUploadRef}
               token={token}
@@ -748,7 +748,7 @@ export function ChatInterface({
               style={{ minHeight: "2.5rem", maxHeight: "128px", overflowY: "auto" }}
               className={`flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${compact ? "text-xs" : "text-sm"} ${isDraggingOver ? "ring-2 ring-primary border-primary" : ""}`}
             />
-            {!pendingPayload && (
+            {!pendingPayload && (token || companyId) && (
               <button
                 type="button"
                 onClick={() => fileUploadRef.current?.triggerOpen()}

@@ -53,6 +53,7 @@ Build a production-ready PE portfolio monitoring platform that a real PE firm co
 - [x] **Document detection in chat** — record_document tool populates detectedDocs, persisted on message object
 - [x] **Firm-side submission routing** — Pulse AI panel routes submissions from firm-side pages; 2 bugs (auto-send not firing, messages not persisting) fixed with per-page chat storage
 - [x] **Per-page chat storage** — each page has independent chat history in sessionStorage, override saved/restored per page, autoMessage StrictMode fix
+- [x] **Pulse AI chat panel audit** — fixed "Invalid token" error in Q&A mode, added company context bar, submission type selection (periodic/plan/onboarding), context card compact sizing, removed auto-send on company select
 - [ ] **Verify document badge detection** — confirm badges show correct colors after page refresh for companies with recorded documents (Brighton test case)
 
 ---

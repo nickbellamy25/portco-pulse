@@ -1,8 +1,8 @@
 # Handover — PortCo Pulse
 
-## Current state (as of 2026-04-07)
+## Current state (as of 2026-04-08)
 
-The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. Latest session focused on: document checklist in submission forms, submission error handling fix, company creation required fields, and investmentDate period filtering fix.
+The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. Latest session focused on: Pulse AI chat panel audit — fixed "Invalid token" error, added company context bar, submission type selection (periodic/plan/onboarding), and context card compact sizing.
 
 ---
 
@@ -453,18 +453,43 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 
 **File changed:** `app/submit/[token]/_components/ChatInterface.tsx` — line 444 condition.
 
+### Session 2026-04-08 (continued) — Pulse AI chat panel audit + UX fixes
+
+**"Invalid token." fix:**
+- FileUploadZone + paperclip button now gated by `(token || companyId)` — hidden in Q&A mode (no company selected)
+- Drag-drop handler in input area also guarded — prevents accidental uploads in Q&A mode
+- Root cause: empty token + no companyId sent to `/api/upload` which rejected with "Invalid token."
+
+**Company context bar (replaces back arrow):**
+- New bar below header: "Submitting for **{companyName}**" with "✕ Exit" button
+- Shows when `effectiveCompanyId && companyMeta && !operatorCompanyId`
+- Exit button only visible when company was manually selected (not auto-set from URL)
+- On Analytics/Settings pages (company from URL), bar shows without Exit
+- Removed `ChevronLeft` import (no longer used)
+
+**Submission type selection:**
+- Removed auto-send of "Submit this period's data" when selecting company from picker
+- Added `SUBMISSION_CHIPS_FN` with 3 chips: periodic actuals, annual plan, historical/onboarding
+- Chips show first in pool when company is active, Q&A chips rotate in after
+- `handleSelectCompany` only sets `pendingAutoMessage` when files are pending (drag-drop flow)
+
+**Context card updates (ChatInterface):**
+- Added "Onboarding" as third DataType option alongside Actuals and Plan
+- `type DataType = "actuals" | "plan" | "onboarding"`
+- Period hint changes when onboarding selected: "List the range of historical periods..."
+- Context card shows for all modes (removed `mode === "periodic"` gate)
+- `sendContextDataType` now uses `join(",")` instead of old `"both"` logic
+- Card text/padding/buttons shrunk to `text-xs` to match compact chat panel
+
+**Files changed:**
+- `app/submit/[token]/_components/ChatInterface.tsx` — file upload guards, context card updates
+- `components/layout/PersistentChatPanel.tsx` — context bar, submission chips, auto-send removal
+
+---
+
 ## What's next — Phase 3 remaining
 
-**Uncommitted changes from previous session (MUST commit):**
-- Firm-side submission routing from Pulse AI panel (per-page chat storage, StrictMode autoMessage fix)
-- `/api/chat/pulse` endpoint (new)
-- Context API: returns companyId, requiredDocs, requiredDocCadences
-- Review API: auth import added
-- Upload API: changes for PDF extraction
-- ChatInterface: context card fix (companyId guard), submission routing fixes
-- PersistentChatPanel: major refactor for per-page storage + submission routing
-- handler.ts: tool_choice forcing for submissions, show_last_card tool
-- session.ts: document type extension
+**All changes from sessions 2026-04-07 and 2026-04-08 are committed.**
 
 **Phase 3 remaining:**
 1. Wire company-specific KPIs into chat submission

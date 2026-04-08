@@ -414,3 +414,19 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 ## Chat Panel — Context Card on Dashboard
 
 [2026-04-08] | "What data are you submitting?" context card showed on Dashboard Q&A mode — no company selected but card still rendered | ChatInterface line 444 condition must include `&& companyId` — the context card should only show when a company is actually selected for submission, not in portfolio Q&A mode. The root cause was PersistentChatPanel always passing `mode="periodic"` to ChatInterface regardless of whether a company was active.
+
+---
+
+## Pulse AI Panel — Q&A vs Submission Mode
+
+[2026-04-08] | "Invalid token." error on Dashboard when user clicked paperclip — FileUploadZone sent empty token + no companyId to /api/upload | FileUploadZone and paperclip button must only render when `(token || companyId)` is truthy. Drag-drop handler must also guard with same condition. In Q&A mode (no company selected), file upload UI is hidden entirely.
+
+[2026-04-08] | Tiny back arrow (`<`) gave no context about which company chat was scoped to | Replace with a visible context bar: "Submitting for **{companyName}**" with "✕ Exit" button. Show Exit only when company was manually selected (not auto-set from page URL). Use `effectiveCompanyId && companyMeta && !operatorCompanyId` to decide visibility.
+
+[2026-04-08] | Auto-sent "Submit this period's data" message fired immediately when selecting a company from picker — no chance to choose submission type | `handleSelectCompany` should NOT set `pendingAutoMessage` when no files are pending. Only auto-send when files were dropped (drag-drop flow). Let prompt chips handle the submission type selection.
+
+[2026-04-08] | No way to choose between periodic, plan, and onboarding submission types from the Pulse AI panel | Added three submission chips via `SUBMISSION_CHIPS_FN`: "Submit this period's actuals for {name}", "Submit annual plan data for {name}", "Submit historical / onboarding data for {name}". These show first in the chip pool (before Q&A chips) when a company is selected.
+
+[2026-04-08] | Context card only had Actuals and Plan buttons — no Onboarding option | Added "Onboarding" as third DataType option. When selected, period hint changes to "List the range of historical periods, e.g. Jan 2023 – Dec 2025." Context card now shows for all modes (removed `mode === "periodic"` gate). sendContextDataType uses `join(",")` instead of old "both" logic.
+
+[2026-04-08] | Context card text was too large for the compact chat panel | Reduced to `text-xs` base, `p-3` padding, buttons `px-2.5 py-1 text-xs`, input `px-2.5 py-1 text-xs`, hint `text-[10px]`. Matches the compact chat panel style.

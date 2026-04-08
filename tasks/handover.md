@@ -324,6 +324,48 @@ Six chat pane fixes:
 
 ---
 
+### Session 2026-04-08 (continued) — Submission card overhaul
+
+**Submission card states (ChatInterface + ConfirmationSummary):**
+- Three states: Draft (no badge, editable, Submit/Cancel), Submitted (green badge, read-only), Canceled (gray badge, read-only)
+- Cancel button now swaps pendingPayload → canceledPayload instead of deleting
+- `canceledPayload` added to ChatMessage interface
+- `isCanceled` prop on ConfirmationSummary: gray badge with XCircle icon, read-only values/notes, no footer buttons
+
+**Document badge row (replaces old text checklist):**
+- ALL 4 doc types (BS, IS, CF, IU) always shown as inline badges on every card
+- Matches Submission Tracking DocChip style: gray (not required), green (detected), red (missing)
+- Interactive on draft cards: click required-doc badge to toggle detected status (green↔red)
+- Read-only on submitted/canceled cards
+- Constants: ALL_DOC_KEYS, DOC_ABBR, DOC_FULL replace old DOC_LABELS
+- Old text-based checklist (✓/✗/○), isDocDue function, cadenceMap parsing all removed
+- "Missing KPIs" amber box removed entirely
+
+**Document detection linked to DB (financial_documents):**
+- `/api/chat/context` now queries financial_documents for each submitted card in history
+- Expands combined_financials → individual statement types via includedStatements
+- Attaches detectedDocuments to initialMessages so badges show correct colors
+- Same DB source as Submission Tracking page — badges now consistent
+
+**requiredDocs wired to firm-side chat:**
+- `/api/chat/context` returns requiredDocs + requiredDocCadences from company record
+- CompanyChat passes both to ChatInterface
+- Document badges now render on firm-side panel (were previously missing)
+
+**Re-show submitted card:**
+- New `show_last_card` tool in handler.ts (periodic mode only)
+- System prompt: "RE-SHOWING A CARD" section instructs Claude to call show_last_card
+- Client handler finds last submittedPayload message, appends read-only copy
+- First attempt (using submit_structured_data) was wrong — created new draft. Replaced with dedicated tool.
+
+**Known issue — document badges may show red on first load:**
+- After submitting via chat, the `detectedDocs` state should be populated from upload handler responses
+- For history-loaded cards, the context API queries financial_documents (fix deployed this session)
+- User may need to hard-refresh (Ctrl+Shift+R) or navigate away and back to trigger fresh API call
+- If badges still show red after refresh, investigate: upload handler detection, record_document tool calls, or detectedDocs state flow
+
+---
+
 ## What's next — Phase 3 remaining
 
 **Phase 3 remaining:**
@@ -332,11 +374,13 @@ Six chat pane fixes:
 3. Submission Tracking UX review
 4. Combined financials edge case
 5. Blocklist mode for member access scopes
+6. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green (matching Submission Tracking). If still red, debug: check upload handler detection during file submission, ensure detectedDocs state populated, trace data from context API to ConfirmationSummary.
 
 **Demo prep remaining:**
 - Test full drag-drop submission flow end-to-end (Brighton XLSX, Apex TXT, Culinary PDF)
 - Test onboarding flow with Pinnacle historical XLSX
 - Verify chat panel resets properly across all navigation paths
+- Verify document badges match Submission Tracking on all companies
 
 ---
 
@@ -377,6 +421,10 @@ Six chat pane fixes:
 - **Add Company dialog**: all fields required (name, fund, industry, investmentDate). investmentDate defaults to today. Button disabled until all filled.
 - **investmentDate filter**: compare by YYYY-MM month granularity, not exact day. Fallback to createdAt for legacy companies.
 - **Document checklist**: replaces old "Documents detected" banner. Shows required docs with ✓/✗/○ status, cadence-aware, combined financials coverage.
+- **Document badge row**: always shows ALL 4 doc types (BS, IS, CF, IU) as inline badges. Gray = not required, green = detected, red = missing. Interactive on draft cards (toggle via onToggleDoc). Replaces old text-based ✓/✗/○ checklist.
+- **show_last_card tool**: dedicated tool for re-showing submitted cards. Never use submit_structured_data for re-show (that creates a new draft). Client finds last submittedPayload and appends read-only copy.
+- **Canceled card state**: canceledPayload on ChatMessage. Cancel swaps (not deletes). Gray badge with XCircle. Read-only.
+- **Document detection linked to DB**: context API queries financial_documents for submitted cards. Same source as Submission Tracking. combined_financials expanded via includedStatements.
 
 ---
 

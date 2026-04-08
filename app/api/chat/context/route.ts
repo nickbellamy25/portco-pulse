@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { deriveSessionKey, loadHistory } from "@/lib/chat/session";
 
 export async function GET(req: NextRequest) {
@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
     role: "user" | "assistant";
     content: string;
     submittedPayload?: Record<string, unknown>;
+    detectedDocuments?: string[];
     divider?: string;
   };
 
@@ -85,7 +86,51 @@ export async function GET(req: NextRequest) {
         if (b.type === "tool_use" && b.name === "submit_structured_data") {
           const payload = b.input?.payload ?? b.input;
           if (payload) {
-            initialMessages.push({ role: "assistant", content: "", submittedPayload: payload });
+            // Look up documents recorded for this submission
+            let docTypes: string[] = [];
+            if (payload.period) {
+              const periodRow = db
+                .select()
+                .from(schema.periods)
+                .where(and(
+                  eq(schema.periods.firmId, user.firmId),
+                  eq(schema.periods.periodStart, `${payload.period}-01`)
+                ))
+                .get();
+              if (periodRow) {
+                const submission = db
+                  .select()
+                  .from(schema.submissions)
+                  .where(and(
+                    eq(schema.submissions.companyId, companyId!),
+                    eq(schema.submissions.periodId, periodRow.id)
+                  ))
+                  .orderBy(desc(schema.submissions.version))
+                  .limit(1)
+                  .get();
+                if (submission) {
+                  const docs = db
+                    .select()
+                    .from(schema.financialDocuments)
+                    .where(eq(schema.financialDocuments.submissionId, submission.id))
+                    .all();
+                  for (const d of docs) {
+                    if (d.documentType === "combined_financials" && d.includedStatements) {
+                      docTypes.push(...d.includedStatements.split(",").filter(Boolean));
+                    } else {
+                      docTypes.push(d.documentType);
+                    }
+                  }
+                  docTypes = [...new Set(docTypes)];
+                }
+              }
+            }
+            initialMessages.push({
+              role: "assistant",
+              content: "",
+              submittedPayload: payload,
+              detectedDocuments: docTypes.length > 0 ? docTypes : undefined,
+            });
           }
         }
       }
@@ -107,5 +152,7 @@ export async function GET(req: NextRequest) {
     enabledKpis,
     userId: user.id,
     openingMessage,
+    requiredDocs: (company as any).requiredDocs ?? "",
+    requiredDocCadences: (company as any).requiredDocCadences ?? "",
   });
 }

@@ -41,6 +41,8 @@ interface CompanyContext {
   enabledKpis: KpiMeta[];
   userId: string;
   openingMessage: string;
+  requiredDocs?: string;
+  requiredDocCadences?: string;
 }
 
 interface PortfolioContext {
@@ -506,6 +508,8 @@ function CompanyChat({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         initialMessages={effectiveInitialMessages as any}
         enabledKpis={ctx.enabledKpis}
+        requiredDocs={ctx.requiredDocs}
+        requiredDocCadences={ctx.requiredDocCadences}
         submittedByUserId={ctx.userId}
         mode={ctx.chatMode}
         chatEndpoint={ctx.chatEndpoint}

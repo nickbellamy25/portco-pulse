@@ -116,6 +116,16 @@ const RECORD_DOCUMENT_TOOL: Anthropic.Tool = {
   },
 };
 
+const SHOW_LAST_CARD_TOOL: Anthropic.Tool = {
+  name: "show_last_card",
+  description:
+    "Re-display the last submitted confirmation card. Call this when the operator asks to re-show, redisplay, or see the last submission card again. The card is displayed read-only — no resubmission occurs.",
+  input_schema: {
+    type: "object" as const,
+    properties: {},
+  },
+};
+
 const SAVE_SUBMISSION_NOTE_TOOL: Anthropic.Tool = {
   name: "save_submission_note",
   description:
@@ -288,7 +298,7 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
   // Tools differ by mode: onboarding has no void tool and uses the auto-absorb submit tool
   const tools: Anthropic.Tool[] = mode === "onboarding"
     ? [SUBMIT_STRUCTURED_DATA_ONBOARDING_TOOL, SUGGEST_QUICK_REPLIES_TOOL, RECORD_DOCUMENT_TOOL, SAVE_SUBMISSION_NOTE_TOOL]
-    : [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL];
+    : [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL];
 
   const encoder = new TextEncoder();
 
@@ -343,6 +353,9 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
             ) as any[];
             const voidBlock = finalMsg.content.find(
               (b) => b.type === "tool_use" && b.name === "void_session_submission"
+            ) as any;
+            const showLastCardBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "show_last_card"
             ) as any;
 
             if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock) {
@@ -419,6 +432,10 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
                 fiscalYear: voidBlock.input?.fiscal_year ?? null,
                 reason: voidBlock.input?.reason ?? null,
               });
+            }
+
+            if (showLastCardBlock) {
+              send({ type: "show_last_card" });
             }
 
             if (noteBlock) {

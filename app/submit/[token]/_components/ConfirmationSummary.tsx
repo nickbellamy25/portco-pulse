@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface KpiEntry {
@@ -25,18 +25,26 @@ interface Props {
   onCancel?: () => void;
   isSubmitting: boolean;
   isSubmitted?: boolean;
+  isCanceled?: boolean;
   detectedDocuments?: string[];
   requiredDocs?: string;
   requiredDocCadences?: string;
   submissionPeriod?: string;
   compact?: boolean;
+  onToggleDoc?: (docKey: string) => void;
 }
 
-const DOC_LABELS: Record<string, string> = {
+const ALL_DOC_KEYS = ["balance_sheet", "income_statement", "cash_flow_statement", "investor_update"] as const;
+const DOC_ABBR: Record<string, string> = {
+  balance_sheet: "BS",
+  income_statement: "IS",
+  cash_flow_statement: "CF",
+  investor_update: "IU",
+};
+const DOC_FULL: Record<string, string> = {
   balance_sheet: "Balance Sheet",
   income_statement: "Income Statement",
   cash_flow_statement: "Cash Flow Statement",
-  combined_financials: "Combined Financials",
   investor_update: "Investor Update",
 };
 
@@ -45,7 +53,7 @@ const KPI_SECTIONS: Record<string, string[]> = {
   Operations: ["customer_acquisition_cost", "headcount", "churn_rate", "inventory_days", "nps_score", "employee_turnover_rate"],
 };
 
-export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, detectedDocuments, requiredDocs, requiredDocCadences, submissionPeriod, compact = false }: Props) {
+export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, isCanceled = false, detectedDocuments, requiredDocs, requiredDocCadences, submissionPeriod, compact = false, onToggleDoc }: Props) {
   const [editableKpis, setEditableKpis] = useState<Record<string, KpiEntry>>(() => ({ ...payload.kpis }));
   const [overallNote, setOverallNote] = useState(payload.overall_note ?? "");
   const [editingCell, setEditingCell] = useState<{ key: string; field: "value" | "note" } | null>(null);
@@ -97,30 +105,9 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
     onConfirm({ ...payload, kpis: editableKpis, overall_note: overallNote.trim() || null });
   }
 
-  // Parse required docs and cadences
+  // Parse required docs
   const requiredDocKeys = (requiredDocs ?? "").split(",").filter(Boolean);
-  const cadenceMap: Record<string, string> = {};
-  (requiredDocCadences ?? "").split(",").filter(Boolean).forEach(entry => {
-    const [key, cadence] = entry.split(":");
-    if (key && cadence) cadenceMap[key] = cadence;
-  });
 
-  function isDocDue(cadence: string, periodMonth: number): boolean {
-    switch (cadence) {
-      case "quarterly": return periodMonth % 3 === 0;
-      case "bi-annual": return periodMonth === 6 || periodMonth === 12;
-      case "annual": return periodMonth === 12;
-      default: return true; // monthly or unknown
-    }
-  }
-
-  // Get period month from submissionPeriod (format "YYYY-MM")
-  const periodMonth = submissionPeriod ? parseInt(submissionPeriod.split("-")[1], 10) : null;
-
-  const missingKpis = enabledKpis.filter((k) => {
-    const entry = editableKpis[k.key];
-    return !entry || entry.value === null || entry.value === undefined;
-  });
 
   function renderRows(kpis: typeof enabledKpis) {
     return kpis.map((kpi) => {
@@ -207,7 +194,7 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
               ? `${formatPeriodLabel(payload.period ?? "")} Submission`
               : `FY ${payload.fiscal_year} Annual Plan`}
           </p>
-          {!isSubmitted && (
+          {!isSubmitted && !isCanceled && (
             <p className={`${noteSize} text-muted-foreground mt-0.5`}>
               Click any value or note to edit inline. Submit when ready.
             </p>
@@ -216,6 +203,11 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
         {isSubmitted && (
           <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 ${noteSize} font-medium`}>
             <CheckCircle2 className={`${compact ? "h-2.5 w-2.5" : "h-3 w-3"}`} /> Submitted
+          </span>
+        )}
+        {isCanceled && (
+          <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 ${noteSize} font-medium`}>
+            <XCircle className={`${compact ? "h-2.5 w-2.5" : "h-3 w-3"}`} /> Canceled
           </span>
         )}
       </div>
@@ -255,47 +247,49 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
           )}
         </div>
 
-        {requiredDocKeys.length > 0 && (
-          <div>
-            <p className={`${noteSize} font-medium uppercase tracking-wide text-muted-foreground mb-1`}>Required Documents</p>
-            <div className="space-y-1">
-              {requiredDocKeys.map(key => {
-                const label = DOC_LABELS[key] || key;
-                const cadence = cadenceMap[key] || "monthly";
-                const due = periodMonth ? isDocDue(cadence, periodMonth) : true;
-                const uploaded = detectedDocuments?.includes(key) ?? false;
-                const coveredByCombined = detectedDocuments?.includes("combined_financials") &&
-                  ["balance_sheet", "income_statement", "cash_flow_statement"].includes(key);
-                const isUploaded = uploaded || coveredByCombined;
+        <div>
+          <p className={`${noteSize} font-medium uppercase tracking-wide text-muted-foreground mb-1`}>Documents</p>
+          <div className="flex items-center gap-1.5">
+            {ALL_DOC_KEYS.map((key) => {
+              const abbr = DOC_ABBR[key];
+              const full = DOC_FULL[key];
+              const required = requiredDocKeys.includes(key);
+              const detected = (detectedDocuments?.includes(key) ?? false) ||
+                (detectedDocuments?.includes("combined_financials") && ["balance_sheet", "income_statement", "cash_flow_statement"].includes(key));
+              const editable = !isSubmitted && !isCanceled && required && !!onToggleDoc;
 
-                return (
-                  <div key={key} className={`flex items-center gap-2 ${textSize} ${!due ? "opacity-40" : ""}`}>
-                    {!due ? (
-                      <span className="text-muted-foreground">○</span>
-                    ) : isUploaded ? (
-                      <span className="text-green-600">✓</span>
-                    ) : (
-                      <span className="text-red-500">✗</span>
-                    )}
-                    <span className={isUploaded ? "text-foreground" : due ? "text-amber-700" : "text-muted-foreground"}>
-                      {label}
-                    </span>
-                    {!due && <span className={`${noteSize} text-muted-foreground`}>Not due ({cadence})</span>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+              let chipClass: string;
+              let tipText: string;
+              if (!required) {
+                chipClass = "bg-gray-50 text-gray-300 border-gray-200";
+                tipText = `${full} — not required`;
+              } else if (detected) {
+                chipClass = "bg-green-100 text-green-700 border-green-300";
+                tipText = `${full} — detected`;
+              } else {
+                chipClass = "bg-red-100 text-red-600 border-red-300";
+                tipText = `${full} — missing`;
+              }
 
-        {missingKpis.length > 0 && (
-          <div className={`${compact ? "p-1.5" : "p-3"} bg-amber-50 border border-amber-200 rounded-lg ${noteSize} text-amber-800`}>
-            Missing: {missingKpis.map((k) => k.label).join(", ")}.
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={!editable}
+                  onClick={() => editable && onToggleDoc?.(key)}
+                  className={`inline-flex items-center px-1.5 py-0.5 ${compact ? "text-[9px]" : "text-[10px]"} font-bold rounded border select-none ${chipClass} ${editable ? "cursor-pointer hover:opacity-80" : "cursor-default"} disabled:cursor-default`}
+                  title={tipText}
+                >
+                  {abbr}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
+
       </div>
 
-      {!isSubmitted && (
+      {!isSubmitted && !isCanceled && (
         <div className={`${px} ${py} border-t border-border flex gap-2`}>
           {onCancel && (
             <Button

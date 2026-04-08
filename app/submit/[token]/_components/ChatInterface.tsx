@@ -16,6 +16,7 @@ interface ChatMessage {
   content: string;
   submittedPayload?: SubmissionPayload;  // inline confirmed submission card (read-only)
   pendingPayload?: SubmissionPayload;    // inline pending review card (interactive)
+  canceledPayload?: SubmissionPayload;   // inline canceled card (read-only, gray badge)
   detectedDocuments?: string[];          // docs detected at time of submission (persisted on message)
   docDetectionLine?: string;             // server-generated doc detection line prepended to assistant message
   divider?: string;                      // section label divider — renders as a horizontal rule with centered text
@@ -265,6 +266,21 @@ export function ChatInterface({
             }
           }
 
+          if (event.type === "show_last_card") {
+            setMessages((prev) => {
+              const lastSubmitted = [...prev].reverse().find((m) => m.submittedPayload);
+              if (lastSubmitted) {
+                return [...prev, {
+                  role: "assistant" as const,
+                  content: "",
+                  submittedPayload: lastSubmitted.submittedPayload,
+                  detectedDocuments: lastSubmitted.detectedDocuments,
+                }];
+              }
+              return prev;
+            });
+          }
+
           if (event.type === "error") {
             setMessages((prev) => {
               const updated = [...prev];
@@ -489,6 +505,27 @@ export function ChatInterface({
             );
           }
 
+          // Inline canceled card (read-only, gray badge)
+          if (msg.canceledPayload) {
+            return (
+              <div key={i} className="max-w-[90%]">
+                <ConfirmationSummary
+                  payload={msg.canceledPayload}
+                  enabledKpis={enabledKpis}
+                  companyName={companyName}
+                  onConfirm={() => {}}
+                  isSubmitting={false}
+                  isCanceled
+                  detectedDocuments={msg.detectedDocuments ?? detectedDocs}
+                  compact={compact}
+                  requiredDocs={requiredDocs}
+                  requiredDocCadences={requiredDocCadences}
+                  submissionPeriod={msg.canceledPayload.period}
+                />
+              </div>
+            );
+          }
+
           // Inline pending review card (interactive)
           if (msg.pendingPayload) {
             return (
@@ -502,12 +539,25 @@ export function ChatInterface({
                   requiredDocs={requiredDocs}
                   requiredDocCadences={requiredDocCadences}
                   submissionPeriod={msg.pendingPayload.period}
+                  onToggleDoc={(docKey) => {
+                    setDetectedDocs((prev) =>
+                      prev.includes(docKey)
+                        ? prev.filter((d) => d !== docKey)
+                        : [...prev, docKey]
+                    );
+                  }}
                   onConfirm={(edited) => {
                     setPendingPayload(null);
                     handleConfirm(edited, i);
                   }}
                   onCancel={() => {
-                    setMessages((prev) => prev.filter((_, j) => j !== i));
+                    setMessages((prev) =>
+                      prev.map((m, j) =>
+                        j === i
+                          ? { role: "assistant" as const, content: "", canceledPayload: m.pendingPayload }
+                          : m
+                      )
+                    );
                     setPendingPayload(null);
                   }}
                   isSubmitting={isSubmitting}

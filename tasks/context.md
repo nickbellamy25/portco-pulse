@@ -338,3 +338,33 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-08] | investmentDate comparison used exact day vs periodStart (1st of month) — company invested mid-month excluded from its own month | Changed filter to compare by YYYY-MM (month granularity): `effectiveDate.slice(0, 7) <= period.periodStart.slice(0, 7)`. A company invested on April 7 now correctly appears in the April period.
 
 [2026-04-08] | Companies with null investmentDate showed in all historical periods | Filter now falls back to `createdAt` date when investmentDate is null, so legacy companies without investmentDate don't pollute historical periods.
+
+---
+
+## Document Checklist on Submission Card
+
+[2026-04-08] | Document checklist only showed for companies with requiredDocs configured — companies with no required docs showed nothing | Always show ALL 4 doc types (BS, IS, CF, IU) as badge-style indicators on every submission card regardless of company config. Gray = not required, green = detected, red = required but missing. Matches Submission Tracking page DocChip style.
+
+[2026-04-08] | Document checklist text-based (✓/✗/○) didn't match Submission Tracking badge style | Use inline badge row matching DocChip: `bg-gray-50 text-gray-300 border-gray-200` (not required), `bg-green-100 text-green-700 border-green-300` (detected), `bg-red-100 text-red-600 border-red-300` (missing). Constants: ALL_DOC_KEYS, DOC_ABBR, DOC_FULL in ConfirmationSummary.
+
+[2026-04-08] | Document badges not interactive — user couldn't correct wrong detection | Draft cards: required doc badges are clickable (toggle green↔red via onToggleDoc callback). Gray badges not clickable. Submitted/canceled cards: read-only. onToggleDoc updates detectedDocs state in ChatInterface.
+
+[2026-04-08] | Chat card doc badges showed all red even though documents were recorded in financial_documents table | Context endpoint (`/api/chat/context`) must query financial_documents for each submitted card and attach detectedDocuments. Expansion: combined_financials → individual statement types via includedStatements. This links chat cards to the same DB source as Submission Tracking.
+
+[2026-04-08] | requiredDocs/requiredDocCadences not passed to firm-side chat — document checklist never showed | `/api/chat/context` must return requiredDocs and requiredDocCadences from company record. CompanyChat in PersistentChatPanel must pass both to ChatInterface. Operator page (page.tsx) already did this correctly.
+
+---
+
+## Submission Card States
+
+[2026-04-08] | Cancel button removed pending card entirely — no visual record it existed | Cancel swaps pendingPayload → canceledPayload (not filter/delete). ChatMessage interface has canceledPayload field. ConfirmationSummary has isCanceled prop → gray "Canceled" badge (XCircle icon), read-only, no buttons.
+
+[2026-04-08] | "Missing KPIs" amber box was redundant — KPI table already shows what's missing | Removed missingKpis calculation and amber box from ConfirmationSummary entirely. Document badge row is the only supplementary section below KPIs.
+
+---
+
+## Re-show Submitted Card
+
+[2026-04-08] | Claude said it couldn't re-show a submitted card — suggested resubmitting | Added show_last_card tool (handler.ts). System prompt instructs Claude to call it when asked to re-show/redisplay. Client finds last submittedPayload message and appends a read-only copy at current conversation position. Does NOT create a new draft — re-shows the submitted card with green badge.
+
+[2026-04-08] | First attempt used submit_structured_data to re-show — created a new draft instead of showing the submitted card | show_last_card is a SEPARATE tool from submit_structured_data. Never use submit_structured_data to re-show — that creates a new draft. show_last_card re-displays the existing submitted card read-only.

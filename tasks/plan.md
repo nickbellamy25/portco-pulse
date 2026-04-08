@@ -44,10 +44,14 @@ Build a production-ready PE portfolio monitoring platform that a real PE firm co
 - [ ] **Chat submission** — handle edge case: operator uploads combined financials that covers multiple statement types (logic partially exists via `combined_financials` doc type)
 - [x] **Chat pane polish** — chips at bottom on all pages, remove company badge from header, collapse on navigation, assistant bubble full-width, tab color consistency, system prompt sort/conclusion fixes, dynamic reminder chip on Submission Tracking (live outstanding companies, confirmation flow, wired into sendRemindersAction)
 - [x] **Chat submission card fixes** — card persists after submit, company name header, compact sizing, documents/missing banners on submitted cards, prompt chips reappear after submission, drag highlight fix
+- [x] **Document badge row on submission cards** — always shows BS/IS/CF/IU, interactive toggle, linked to financial_documents DB, matches Submission Tracking style
+- [x] **Re-show submitted card** — show_last_card tool, system prompt instruction, client handler
+- [x] **Canceled card state** — canceledPayload, gray badge, read-only
 - [x] **Chat panel navigation** — messages clear on page change, company chat remounts on company switch, standard UX
 - [x] **Submission tracking date filter** — companies only shown from investment date onwards
 - [x] **Company onboarding flow** — new companies get pending status + in-app notification on creation
 - [x] **Document detection in chat** — record_document tool populates detectedDocs, persisted on message object
+- [ ] **Verify document badge detection** — confirm badges show correct colors after page refresh for companies with recorded documents (Brighton test case)
 
 ---
 

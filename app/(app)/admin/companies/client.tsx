@@ -1564,6 +1564,7 @@ export function CompaniesClient({
   const [addFund, setAddFund] = useState("");
   const [addFundCustom, setAddFundCustom] = useState("");
   const [addTimezone, setAddTimezone] = useState("America/New_York");
+  const [addInvestmentDate, setAddInvestmentDate] = useState("");
   const [addSaving, setAddSaving] = useState(false);
 
   // Derived lists of existing industries + funds in this firm
@@ -1589,16 +1590,24 @@ export function CompaniesClient({
     setAddIndustry(""); setAddIndustryCustom("");
     setAddFund(""); setAddFundCustom("");
     setAddTimezone("America/New_York");
+    setAddInvestmentDate("");
     setAddOpen(true);
   }
 
+  const addIndustryResolved = addIndustry === "__new__" ? addIndustryCustom.trim() : addIndustry;
+  const addFundResolved = addFund === "__new__" ? addFundCustom.trim() : addFund;
+  const addFormValid = addName.trim() !== "" && addIndustryResolved !== "" && addFundResolved !== "" && addInvestmentDate !== "";
+
   async function handleAdd() {
     if (!addName.trim()) { toast.error("Company name is required."); return; }
-    const industryValue = addIndustry === "__new__" ? addIndustryCustom.trim() : addIndustry;
-    const fundValue = addFund === "__new__" ? addFundCustom.trim() : addFund;
+    const industryValue = addIndustryResolved;
+    const fundValue = addFundResolved;
+    if (!industryValue) { toast.error("Industry is required."); return; }
+    if (!fundValue) { toast.error("Fund is required."); return; }
+    if (!addInvestmentDate) { toast.error("Investment date is required."); return; }
     setAddSaving(true);
     try {
-      const result = await saveCompanyAction({ name: addName, slug: "", industry: industryValue, fund: fundValue, firmId });
+      const result = await saveCompanyAction({ name: addName, slug: "", industry: industryValue, fund: fundValue, firmId, investmentDate: addInvestmentDate });
       toast.success("Company created.");
       setAddOpen(false);
       router.refresh();
@@ -1981,16 +1990,16 @@ export function CompaniesClient({
           <div className="space-y-4 py-2">
             <div>
               <Label>Company Name *</Label>
-              <Input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Apex Industrial Manufacturing" className="mt-1" />
+              <Input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Apex Industrial Manufacturing" className="mt-1" required />
             </div>
             <div>
-              <Label>Fund</Label>
+              <Label>Fund *</Label>
               <select
                 value={addFund}
                 onChange={(e) => setAddFund(e.target.value)}
                 className="mt-1 w-full text-sm border border-border rounded-md px-3 py-2 bg-white"
               >
-                <option value="">— None —</option>
+                <option value="">— Select fund —</option>
                 {existingFunds.map((f) => (
                   <option key={f} value={f}>{f}</option>
                 ))}
@@ -2007,13 +2016,13 @@ export function CompaniesClient({
               )}
             </div>
             <div>
-              <Label>Industry</Label>
+              <Label>Industry *</Label>
               <select
                 value={addIndustry}
                 onChange={(e) => setAddIndustry(e.target.value)}
                 className="mt-1 w-full text-sm border border-border rounded-md px-3 py-2 bg-white"
               >
-                <option value="">— None —</option>
+                <option value="">— Select industry —</option>
                 {existingIndustries.map((ind) => (
                   <option key={ind} value={ind}>{ind}</option>
                 ))}
@@ -2030,6 +2039,16 @@ export function CompaniesClient({
               )}
             </div>
             <div>
+              <Label>Investment Date *</Label>
+              <Input
+                type="date"
+                value={addInvestmentDate}
+                onChange={(e) => setAddInvestmentDate(e.target.value)}
+                className="mt-1"
+                required
+              />
+            </div>
+            <div>
               <Label>Timezone</Label>
               <select
                 value={addTimezone}
@@ -2044,7 +2063,7 @@ export function CompaniesClient({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={addSaving}>
+            <Button onClick={handleAdd} disabled={addSaving || !addFormValid}>
               {addSaving ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>

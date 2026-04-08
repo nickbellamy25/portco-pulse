@@ -17,6 +17,7 @@ type SaveCompanyInput = {
   industry: string;
   fund: string;
   firmId: string;
+  investmentDate?: string;
 };
 
 export async function saveCompanyAction(input: SaveCompanyInput): Promise<{ id: string } | void> {
@@ -28,6 +29,8 @@ export async function saveCompanyAction(input: SaveCompanyInput): Promise<{ id: 
       .run();
   } else {
     const newId = crypto.randomUUID();
+    const today = new Date();
+    const investmentDate = input.investmentDate || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     db.insert(schema.companies).values({
       id: newId,
       firmId,
@@ -38,6 +41,7 @@ export async function saveCompanyAction(input: SaveCompanyInput): Promise<{ id: 
       submissionToken: randomBytes(32).toString("base64url"),
       requiredDocs: "balance_sheet,income_statement,cash_flow_statement,investor_update",
       onboardingStatus: "pending",
+      investmentDate,
     } as any).run();
 
     await createInAppNotifications({

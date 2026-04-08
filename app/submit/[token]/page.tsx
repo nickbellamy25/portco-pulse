@@ -144,6 +144,8 @@ export default async function SubmitPage({
           firmName={firmName}
           initialMessages={allInitialMessages as any}
           enabledKpis={kpiDefs.map((d) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType }))}
+          requiredDocs={(company as any).requiredDocs ?? ""}
+          requiredDocCadences={(company as any).requiredDocCadences ?? ""}
           submittedByUserId={(session.user as any).id}
           mode={chatMode}
           chatEndpoint={chatMode === "onboarding" ? "/api/chat/onboard" : "/api/chat/submit"}

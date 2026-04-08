@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err: any) {
     console.error("[review] submission write failed:", err);
-    return NextResponse.json({ error: err.message ?? "write_failed" }, { status: 500 });
+    return NextResponse.json({ message: err.message ?? "write_failed" }, { status: 500 });
   }
 }
 

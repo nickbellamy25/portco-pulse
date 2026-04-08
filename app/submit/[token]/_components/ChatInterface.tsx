@@ -53,6 +53,8 @@ interface Props {
   promptChips?: string[];
   fixedChip?: string;
   compact?: boolean;
+  requiredDocs?: string;
+  requiredDocCadences?: string;
   onMessagesChange?: (msgs: ChatMessage[]) => void;
 }
 
@@ -73,6 +75,8 @@ export function ChatInterface({
   promptChips = [],
   fixedChip,
   compact = false,
+  requiredDocs,
+  requiredDocCadences,
   onMessagesChange,
 }: Props) {
   // Restore submitted cards after the text history (they happened at the end of the prior session)
@@ -379,9 +383,10 @@ export function ChatInterface({
             : prev
         );
       } else {
-        alert(data.message ?? "Submission failed. Please try again.");
+        alert(data.message ?? data.error ?? "Submission failed. Please try again.");
       }
-    } catch {
+    } catch (err) {
+      console.error("[ChatInterface] submission error:", err);
       alert("Connection error. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -476,6 +481,9 @@ export function ChatInterface({
                   isSubmitted
                   detectedDocuments={msg.detectedDocuments ?? detectedDocs}
                   compact={compact}
+                  requiredDocs={requiredDocs}
+                  requiredDocCadences={requiredDocCadences}
+                  submissionPeriod={msg.submittedPayload.period}
                 />
               </div>
             );
@@ -491,6 +499,9 @@ export function ChatInterface({
                   companyName={companyName}
                   detectedDocuments={detectedDocs}
                   compact={compact}
+                  requiredDocs={requiredDocs}
+                  requiredDocCadences={requiredDocCadences}
+                  submissionPeriod={msg.pendingPayload.period}
                   onConfirm={(edited) => {
                     setPendingPayload(null);
                     handleConfirm(edited, i);

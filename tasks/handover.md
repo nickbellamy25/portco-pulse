@@ -2,7 +2,7 @@
 
 ## Current state (as of 2026-04-07)
 
-The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. Latest session focused on: chat submission card fixes, chat panel navigation reset, submission tracking investment date filtering, company onboarding flow, and ConfirmationSummary compact sizing.
+The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. Latest session focused on: document checklist in submission forms, submission error handling fix, company creation required fields, and investmentDate period filtering fix.
 
 ---
 
@@ -292,6 +292,38 @@ Six chat pane fixes:
 
 ---
 
+### Session 2026-04-08 — Document checklist, error handling, company creation fixes
+
+**Document checklist in submission forms:**
+- `page.tsx` passes `requiredDocs` + `requiredDocCadences` from company to ChatInterface
+- `ChatInterface` forwards to both ConfirmationSummary renders (pending + submitted cards)
+- `ConfirmationSummary` renders "Required Documents" section with status indicators:
+  - ✓ green = uploaded (including via combined financials coverage)
+  - ✗ red = required and due but missing
+  - ○ gray = not due this period (cadence-aware)
+- Replaces old "Documents detected" green banner
+
+**Submission error handling fix:**
+- `/api/review` error response changed from `{ error: ... }` to `{ message: ... }` to match client expectation
+- ChatInterface checks both `data.message` and `data.error` as fallback
+- Added `console.error` in catch block for browser debugging
+
+**Company creation — required fields + investmentDate:**
+- `saveCompanyAction` now sets `investmentDate` (from dialog input, defaults to today)
+- Add Company dialog: all fields required (name, fund, industry, investmentDate) with `*` labels and disabled button
+- `SaveCompanyInput` type extended with `investmentDate?: string`
+
+**investmentDate period filtering fix:**
+- Changed `getSubmissionTracking` filter from exact day comparison to YYYY-MM month granularity
+- A company invested on April 7 now correctly appears in the April period
+- Null investmentDate falls back to `createdAt` date (legacy compat)
+
+**Pinnacle Retail DB fix:**
+- Created `scripts/fix-pinnacle.js` to set `onboarding_status = 'pending'` for existing Pinnacle company
+- Pinnacle was created before the `onboardingStatus: "pending"` code was added to `saveCompanyAction`
+
+---
+
 ## What's next — Phase 3 remaining
 
 **Phase 3 remaining:**
@@ -342,6 +374,9 @@ Six chat pane fixes:
 - **Prompt chips after submission**: chips reappear when lastSubmittedIndex > lastUserIndex (conversation cycle complete).
 - **Company onboarding**: new companies get `onboardingStatus: "pending"` + in-app notification on creation.
 - **Submission tracking date filter**: companies filtered by investmentDate — only shown from investment month onwards.
+- **Add Company dialog**: all fields required (name, fund, industry, investmentDate). investmentDate defaults to today. Button disabled until all filled.
+- **investmentDate filter**: compare by YYYY-MM month granularity, not exact day. Fallback to createdAt for legacy companies.
+- **Document checklist**: replaces old "Documents detected" banner. Shows required docs with ✓/✗/○ status, cadence-aware, combined financials coverage.
 
 ---
 

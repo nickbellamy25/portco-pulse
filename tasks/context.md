@@ -301,7 +301,7 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 
 ## Submission Tracking
 
-[2026-04-07] | New company appeared in all historical periods in Submission Tracking | Filter companies by investmentDate in getSubmissionTracking — exclude companies whose investmentDate is after the period start. Companies with no investmentDate show in all periods (backward compat).
+[2026-04-07] | New company appeared in all historical periods in Submission Tracking | Filter companies by investmentDate in getSubmissionTracking — compare by YYYY-MM month granularity (not exact day) so mid-month investments show in their month. Fallback to createdAt when investmentDate is null.
 
 ---
 
@@ -316,3 +316,25 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 ## Demo Files
 
 [2026-04-07] | Demo files need to be realistic and test specific platform capabilities | Brighton XLSX: 3-tab financials (tests document recognition). Apex TXT: messy informal email (tests unstructured extraction). Culinary PDF: formatted P&L (tests PDF handling). Pinnacle XLSX: 3-year historical (tests onboarding). Seed cleans demo dir on each run (rmSync). Numbers must be plausible continuations of seeded history.
+
+---
+
+## Document Checklist in Submission Forms
+
+[2026-04-08] | Document checklist not showing in chat submission forms | Pass `requiredDocs` and `requiredDocCadences` from company through page.tsx → ChatInterface → ConfirmationSummary. ConfirmationSummary renders a Required Documents section with ✓ (uploaded), ✗ (missing), ○ (not due) indicators. Cadence-aware using `isDocDue()` logic. Combined financials coverage detection included.
+
+---
+
+## Submission Error Handling
+
+[2026-04-08] | /api/review returns `{ error: msg }` but ChatInterface checks `data.message` — real errors hidden behind generic alert | Changed review endpoint to return `{ message: ... }`. ChatInterface now checks both `data.message` and `data.error` as fallback. Added console.error in catch block.
+
+---
+
+## Company Creation — Required Fields
+
+[2026-04-08] | New companies created without investmentDate showed in all historical Submission Tracking periods | saveCompanyAction now sets investmentDate (defaults to today). Add Company dialog now requires all fields: name, fund, industry, investmentDate. All marked with * and button disabled until filled.
+
+[2026-04-08] | investmentDate comparison used exact day vs periodStart (1st of month) — company invested mid-month excluded from its own month | Changed filter to compare by YYYY-MM (month granularity): `effectiveDate.slice(0, 7) <= period.periodStart.slice(0, 7)`. A company invested on April 7 now correctly appears in the April period.
+
+[2026-04-08] | Companies with null investmentDate showed in all historical periods | Filter now falls back to `createdAt` date when investmentDate is null, so legacy companies without investmentDate don't pollute historical periods.

@@ -1004,11 +1004,13 @@ export function getSubmissionTracking(firmId: string, periodId: string, filters:
   const now = new Date().toISOString().split("T")[0];
   const isOverdueable = period?.dueDate != null && now > period.dueDate;
 
-  // Filter out companies whose investmentDate is after this period
+  // Filter out companies whose investmentDate is after this period's month
   const companies = allCompanies.filter((c: any) => {
-    if (!c.investmentDate) return true; // no date = show in all periods
+    const effectiveDate = c.investmentDate || c.createdAt?.slice(0, 10);
+    if (!effectiveDate) return true; // no date at all = show in all periods (legacy)
     if (!period) return true;
-    return c.investmentDate <= period.periodStart;
+    // Compare by YYYY-MM so a company invested mid-month still shows in that month's period
+    return effectiveDate.slice(0, 7) <= period.periodStart.slice(0, 7);
   });
 
   const rows: SubmissionTrackingRow[] = [];

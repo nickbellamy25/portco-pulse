@@ -26,15 +26,26 @@ interface Props {
   isSubmitting: boolean;
   isSubmitted?: boolean;
   detectedDocuments?: string[];
+  requiredDocs?: string;
+  requiredDocCadences?: string;
+  submissionPeriod?: string;
   compact?: boolean;
 }
+
+const DOC_LABELS: Record<string, string> = {
+  balance_sheet: "Balance Sheet",
+  income_statement: "Income Statement",
+  cash_flow_statement: "Cash Flow Statement",
+  combined_financials: "Combined Financials",
+  investor_update: "Investor Update",
+};
 
 const KPI_SECTIONS: Record<string, string[]> = {
   Finance: ["revenue", "gross_margin", "ebitda", "cash_balance", "capex", "operating_cash_flow"],
   Operations: ["customer_acquisition_cost", "headcount", "churn_rate", "inventory_days", "nps_score", "employee_turnover_rate"],
 };
 
-export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, detectedDocuments, compact = false }: Props) {
+export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, detectedDocuments, requiredDocs, requiredDocCadences, submissionPeriod, compact = false }: Props) {
   const [editableKpis, setEditableKpis] = useState<Record<string, KpiEntry>>(() => ({ ...payload.kpis }));
   const [overallNote, setOverallNote] = useState(payload.overall_note ?? "");
   const [editingCell, setEditingCell] = useState<{ key: string; field: "value" | "note" } | null>(null);
@@ -85,6 +96,26 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
   function handleConfirmClick() {
     onConfirm({ ...payload, kpis: editableKpis, overall_note: overallNote.trim() || null });
   }
+
+  // Parse required docs and cadences
+  const requiredDocKeys = (requiredDocs ?? "").split(",").filter(Boolean);
+  const cadenceMap: Record<string, string> = {};
+  (requiredDocCadences ?? "").split(",").filter(Boolean).forEach(entry => {
+    const [key, cadence] = entry.split(":");
+    if (key && cadence) cadenceMap[key] = cadence;
+  });
+
+  function isDocDue(cadence: string, periodMonth: number): boolean {
+    switch (cadence) {
+      case "quarterly": return periodMonth % 3 === 0;
+      case "bi-annual": return periodMonth === 6 || periodMonth === 12;
+      case "annual": return periodMonth === 12;
+      default: return true; // monthly or unknown
+    }
+  }
+
+  // Get period month from submissionPeriod (format "YYYY-MM")
+  const periodMonth = submissionPeriod ? parseInt(submissionPeriod.split("-")[1], 10) : null;
 
   const missingKpis = enabledKpis.filter((k) => {
     const entry = editableKpis[k.key];
@@ -224,18 +255,36 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
           )}
         </div>
 
-        {detectedDocuments && detectedDocuments.length > 0 && (
-          <div className={`${compact ? "p-1.5" : "p-3"} bg-green-50 border border-green-200 rounded-lg ${noteSize} text-green-800`}>
-            Documents detected: {detectedDocuments.map(d => {
-              const labels: Record<string, string> = {
-                balance_sheet: "Balance Sheet",
-                income_statement: "Income Statement",
-                cash_flow_statement: "Cash Flow Statement",
-                combined_financials: "Combined Financials",
-                investor_update: "Investor Update",
-              };
-              return labels[d] || d;
-            }).join(", ")}
+        {requiredDocKeys.length > 0 && (
+          <div>
+            <p className={`${noteSize} font-medium uppercase tracking-wide text-muted-foreground mb-1`}>Required Documents</p>
+            <div className="space-y-1">
+              {requiredDocKeys.map(key => {
+                const label = DOC_LABELS[key] || key;
+                const cadence = cadenceMap[key] || "monthly";
+                const due = periodMonth ? isDocDue(cadence, periodMonth) : true;
+                const uploaded = detectedDocuments?.includes(key) ?? false;
+                const coveredByCombined = detectedDocuments?.includes("combined_financials") &&
+                  ["balance_sheet", "income_statement", "cash_flow_statement"].includes(key);
+                const isUploaded = uploaded || coveredByCombined;
+
+                return (
+                  <div key={key} className={`flex items-center gap-2 ${textSize} ${!due ? "opacity-40" : ""}`}>
+                    {!due ? (
+                      <span className="text-muted-foreground">○</span>
+                    ) : isUploaded ? (
+                      <span className="text-green-600">✓</span>
+                    ) : (
+                      <span className="text-red-500">✗</span>
+                    )}
+                    <span className={isUploaded ? "text-foreground" : due ? "text-amber-700" : "text-muted-foreground"}>
+                      {label}
+                    </span>
+                    {!due && <span className={`${noteSize} text-muted-foreground`}>Not due ({cadence})</span>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

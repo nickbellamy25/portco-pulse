@@ -73,16 +73,23 @@ export function PersistentChatPanel({
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
-  const [submissionOverrideId, setSubmissionOverrideId] = useState<string | null>(null);
 
-  // Clear submission override when user navigates to a different page
-  const prevPanelPathname = useRef(panelPathname);
-  useEffect(() => {
-    if (prevPanelPathname.current !== panelPathname && submissionOverrideId) {
-      setSubmissionOverrideId(null);
-    }
-    prevPanelPathname.current = panelPathname;
-  }, [panelPathname, submissionOverrideId]);
+  function getPageKey(path: string) { return `pulse_chat_page_v1_${path}`; }
+
+  function loadPageState(path: string): { messages: Array<{ role: "user" | "assistant"; content: string; [key: string]: unknown }>; overrideCompanyId: string | null } {
+    if (typeof window === "undefined") return { messages: [], overrideCompanyId: null };
+    try {
+      const raw = sessionStorage.getItem(getPageKey(path));
+      if (raw) {
+        const state = JSON.parse(raw);
+        if (Array.isArray(state)) return { messages: state, overrideCompanyId: null };
+        return { messages: state.messages ?? [], overrideCompanyId: state.overrideCompanyId ?? null };
+      }
+    } catch {}
+    return { messages: [], overrideCompanyId: null };
+  }
+
+  const [submissionOverrideId, setSubmissionOverrideId] = useState<string | null>(() => loadPageState(panelPathname).overrideCompanyId);
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -105,23 +112,42 @@ export function PersistentChatPanel({
     document.addEventListener("mouseup", onMouseUp);
   }, [panelWidth]);
 
-  const SESSION_KEY = "pulse_chat_messages_v1";
-  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; [key: string]: unknown }>>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const stored = sessionStorage.getItem("pulse_chat_messages_v1");
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  });
+  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; [key: string]: unknown }>>(() => loadPageState(panelPathname).messages);
 
+  const chatMessagesRef = useRef(chatMessages);
+  chatMessagesRef.current = chatMessages;
+
+  // Debounced save — persists current page state to sessionStorage
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(chatMessages));
+        sessionStorage.setItem(getPageKey(panelPathname), JSON.stringify({
+          messages: chatMessages,
+          overrideCompanyId: submissionOverrideId,
+        }));
       } catch {}
     }, 500);
     return () => clearTimeout(timer);
-  }, [chatMessages]);
+  }, [chatMessages, panelPathname, submissionOverrideId]);
+
+  // Swap page state on navigation
+  const prevPanelPathname = useRef(panelPathname);
+  useEffect(() => {
+    if (prevPanelPathname.current !== panelPathname) {
+      // Save current page state immediately
+      try {
+        sessionStorage.setItem(getPageKey(prevPanelPathname.current), JSON.stringify({
+          messages: chatMessagesRef.current,
+          overrideCompanyId: submissionOverrideId,
+        }));
+      } catch {}
+      // Load new page state
+      const newState = loadPageState(panelPathname);
+      setChatMessages(newState.messages);
+      setSubmissionOverrideId(newState.overrideCompanyId);
+      prevPanelPathname.current = panelPathname;
+    }
+  }, [panelPathname, submissionOverrideId]);
 
   useEffect(() => {
     if (!chatOpen) {
@@ -238,18 +264,6 @@ function ChatPanelExpanded({
 
   const prevTargetRef = useRef<string | null | undefined>(undefined);
   const prevCompanyIdRef = useRef<string | null | undefined>(undefined);
-  const prevPathnameRef = useRef(pathname);
-
-  // Clear chat messages whenever the page route changes (skip if override submission is active)
-  useEffect(() => {
-    if (prevPathnameRef.current !== pathname) {
-      prevPathnameRef.current = pathname;
-      if (!submissionOverrideId) {
-        setChatMessages([]);
-      }
-    }
-  }, [pathname, setChatMessages, submissionOverrideId]);
-
   useEffect(() => {
     // Skip if the target hasn't changed
     if (prevTargetRef.current === targetCompanyId) return;
@@ -261,7 +275,7 @@ function ChatPanelExpanded({
       prevCompanyIdRef.current !== null &&
       targetCompanyId !== null &&
       prevCompanyIdRef.current !== targetCompanyId;
-    if (switchingCompany) {
+    if (switchingCompany && !submissionOverrideId) {
       setChatMessages([]);
     }
     prevCompanyIdRef.current = targetCompanyId;
@@ -286,7 +300,7 @@ function ChatPanelExpanded({
 
   // Fetch override context when submissionOverrideId changes
   useEffect(() => {
-    if (!submissionOverrideId || targetCompanyId !== null) {
+    if (!submissionOverrideId) {
       setOverrideCtx(null);
       return;
     }
@@ -300,7 +314,7 @@ function ChatPanelExpanded({
         setOverrideCtx(null);
       })
       .finally(() => setOverrideLoading(false));
-  }, [submissionOverrideId, targetCompanyId]);
+  }, [submissionOverrideId]);
 
   function handleBackToPortfolio() {
     setSubmissionOverrideId(null);
@@ -323,7 +337,7 @@ function ChatPanelExpanded({
     setSubmissionOverrideId(companyId);
   }
 
-  const showOverride = overrideCtx !== null && targetCompanyId === null;
+  const showOverride = overrideCtx !== null;
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-background">
@@ -344,7 +358,7 @@ function ChatPanelExpanded({
       </div>
 
       {/* Back button when override is active (hidden during file/text submission mode) */}
-      {showOverride && pendingSubmissionFiles.length === 0 && !pendingSubmissionText && (
+      {showOverride && pendingSubmissionFiles.length === 0 && (
         <button
           type="button"
           onClick={handleBackToPortfolio}
@@ -367,7 +381,7 @@ function ChatPanelExpanded({
             messages={chatMessages}
             onMessagesChange={setChatMessages}
             onSubmitForCompany={null}
-            autoSubmit={true}
+            autoSubmit={chatMessages.length === 0}
             initialFiles={pendingSubmissionFiles}
             autoMessageOverride={pendingSubmissionText ?? undefined}
           />

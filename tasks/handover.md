@@ -402,12 +402,51 @@ Six chat pane fixes:
 2. Consider simplifying the architecture: instead of the 4-component hop (QAPane → Parent → CompanyChat → ChatInterface), consider making the QA endpoint itself support submission when company is identified
 3. OR: move the submission detection + company matching to the parent component so it happens before the QA pane even renders
 
+### Session 2026-04-08 (continued) — Per-page chat storage + submission routing bug fixes
+
+**Two bugs in firm-side submission routing from Pulse AI panel:**
+
+Bug 1: "Paste twice required" — autoMessage didn't fire reliably after company detection switched to CompanyChat.
+- **Root cause**: React StrictMode runs effects twice. The `autoMessageSentRef.current = true` was set BEFORE the setTimeout, so StrictMode's cleanup cleared the timer and the second invocation saw the ref as true → skipped.
+- **Fix** (`ChatInterface.tsx`): Moved `autoMessageSentRef.current = true` inside the setTimeout callback. StrictMode cleanup clears the timer, ref stays false, second invocation starts a new timer that succeeds.
+
+Bug 2: "Messages disappear on navigation" — submission cards vanished when navigating between pages.
+- **Root cause (layer 1)**: `PersistentChatPanel` had a pathname-watching effect (lines 78-85) that cleared `submissionOverrideId` on EVERY navigation. This killed the override before `ChatPanelExpanded` could use it.
+- **Root cause (layer 2)**: Single shared `chatMessages` state meant clearing messages for one page affected all pages. No per-page isolation.
+- **Root cause (layer 3)**: `showOverride` was gated by `targetCompanyId === null`, so navigating to Analytics (where targetCompanyId is set from URL) killed the override even when it should persist.
+- **Root cause (layer 4)**: The `loading` state in ChatPanelExpanded would unmount CompanyChat during navigation (spinner showed), causing ChatInterface to remount with fresh `autoMessageSentRef` → autoMessage re-fired → duplicate submission cards.
+
+**Architecture change — per-page chat storage (`PersistentChatPanel.tsx`):**
+- Replaced single `pulse_chat_messages_v1` sessionStorage key with per-page keys: `pulse_chat_page_v1_${pathname}`
+- Each page stores `{ messages, overrideCompanyId }` independently
+- On navigation: save current page state → load new page state → restore `submissionOverrideId` from stored state
+- `submissionOverrideId` initializer reads from per-page storage on mount
+- `chatMessagesRef` tracks latest messages for the save-on-navigate effect without re-triggering
+- Debounced save (500ms) persists both messages and overrideCompanyId
+
+**Other fixes in `PersistentChatPanel.tsx`:**
+- Removed pathname-change message clearing effect from `ChatPanelExpanded` (parent handles per-page swap now)
+- Override context fetch: removed `targetCompanyId` dependency — override persists regardless of page
+- `showOverride = overrideCtx !== null` (removed `&& targetCompanyId === null`)
+- Company-switch message clear guarded by `&& !submissionOverrideId`
+- `autoSubmit={chatMessages.length === 0}` on override CompanyChat — prevents re-fire when messages already exist (navigating back to a page with saved submission history)
+- Back button: removed `!pendingSubmissionText` check — always visible when override is active
+
+**Logout cleanup (`topbar.tsx`):**
+- Updated signOut to iterate and remove all `pulse_chat_page_v1_*` sessionStorage keys instead of single old key
+
+**Expected behavior after fix:**
+- Dashboard: paste KPI data → submission card → submit/cancel → card stays visible
+- Navigate to Tracking → fresh chat (loaded from Tracking's per-page state, empty by default)
+- Navigate back to Dashboard → submission card restored (loaded from Dashboard's per-page state), override re-activates, no autoMessage re-fire
+- Each page has independent chat history that persists in sessionStorage
+
 ---
 
 ## What's next — Phase 3 remaining
 
 **Phase 3 remaining:**
-1. **Fix firm-side submission routing** — two bugs remain (auto-send not firing, messages not persisting on navigation). See handover for details and debugging approach.
+1. **Firm-side submission routing — verify fix** — per-page chat storage implemented, auto-send StrictMode fix applied. Needs end-to-end testing: paste KPI data on Dashboard → submit/cancel → navigate away → navigate back → verify card persists. Also test: file drag-drop submission, company picker flow, override dismissal via back button.
 2. Wire company-specific KPIs into chat submission
 3. Fix variance coloring for lower-is-better KPIs (CapEx, Churn Rate, etc.)
 4. Submission Tracking UX review
@@ -420,6 +459,7 @@ Six chat pane fixes:
 - Test onboarding flow with Pinnacle historical XLSX
 - Verify chat panel resets properly across all navigation paths
 - Verify document badges match Submission Tracking on all companies
+- Verify per-page chat storage works across all navigation paths (Dashboard ↔ Tracking ↔ Data ↔ Settings)
 
 ---
 

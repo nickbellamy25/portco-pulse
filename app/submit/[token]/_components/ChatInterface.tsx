@@ -340,7 +340,6 @@ export function ChatInterface({
 
   useEffect(() => {
     if (autoMessage && !autoMessageSentRef.current) {
-      autoMessageSentRef.current = true;
       const uploads = autoUploads ?? [];
       // Extract detected docs from auto uploads
       const docs = uploads.flatMap(u => {
@@ -350,7 +349,11 @@ export function ChatInterface({
       });
       if (docs.length > 0) setDetectedDocs(prev => [...new Set([...prev, ...docs])]);
       // Small delay so the component is fully mounted
-      const t = setTimeout(() => sendMessageRef.current(autoMessage, uploads), 100);
+      // Set ref INSIDE timeout so StrictMode cleanup doesn't block retry
+      const t = setTimeout(() => {
+        autoMessageSentRef.current = true;
+        sendMessageRef.current(autoMessage, uploads);
+      }, 100);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

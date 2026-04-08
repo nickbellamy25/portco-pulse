@@ -51,6 +51,8 @@ Build a production-ready PE portfolio monitoring platform that a real PE firm co
 - [x] **Submission tracking date filter** — companies only shown from investment date onwards
 - [x] **Company onboarding flow** — new companies get pending status + in-app notification on creation
 - [x] **Document detection in chat** — record_document tool populates detectedDocs, persisted on message object
+- [x] **Firm-side submission routing** — Pulse AI panel routes submissions from firm-side pages; 2 bugs (auto-send not firing, messages not persisting) fixed with per-page chat storage
+- [x] **Per-page chat storage** — each page has independent chat history in sessionStorage, override saved/restored per page, autoMessage StrictMode fix
 - [ ] **Verify document badge detection** — confirm badges show correct colors after page refresh for companies with recorded documents (Brighton test case)
 
 ---

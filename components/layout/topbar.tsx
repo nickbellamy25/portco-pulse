@@ -182,7 +182,12 @@ export function Topbar({ userName, userRole }: TopbarProps) {
         </div>
         <button
           onClick={() => {
-            try { sessionStorage.removeItem("pulse_chat_messages_v1"); } catch {}
+            try {
+              for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                const key = sessionStorage.key(i);
+                if (key?.startsWith("pulse_chat_page_v1_")) sessionStorage.removeItem(key);
+              }
+            } catch {}
             signOut({ callbackUrl: "/login" });
           }}
           className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted"

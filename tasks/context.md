@@ -384,3 +384,27 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-08] | submit_structured_data tool_call created blank bubble above submission card | Line 180 adds empty assistant placeholder for streaming text. When tool-only response arrives (no text), placeholder stays empty. Fix: tool_call handler checks if last message is empty placeholder and replaces it in-place instead of appending.
 
 [2026-04-08] | Context API showed canceled cards as "Submitted" after navigation | context/route.ts reconstructs all submit_structured_data tool calls as submittedPayload. Fix: check if real submission exists in DB (submissions table). If not found → canceledPayload instead of submittedPayload.
+
+---
+
+## Per-Page Chat Storage
+
+[2026-04-08] | Single shared chatMessages state caused submission cards to bleed between pages or get cleared on navigation | Chat messages are now stored per-page in sessionStorage using `pulse_chat_page_v1_${pathname}` keys. Each page stores `{ messages, overrideCompanyId }`. On navigation, PersistentChatPanel saves current page state and loads the new page state. Never use a single shared key for cross-page chat.
+
+[2026-04-08] | Submission override (submissionOverrideId) was cleared on every navigation by a pathname-watching effect in PersistentChatPanel | Override is now saved/restored as part of per-page state. The old explicit clearing effect was removed. Override persists when navigating back to the page. Only panel close clears the override (explicit user action).
+
+[2026-04-08] | autoMessage re-fired on navigation because loading state temporarily unmounted CompanyChat, resetting autoMessageSentRef | Added `autoSubmit={chatMessages.length === 0}` guard on the override CompanyChat render. When messages already exist (navigating back), autoSubmit is false → no autoMessage generated → no re-fire.
+
+---
+
+## React StrictMode + useEffect
+
+[2026-04-08] | autoMessage useEffect set ref BEFORE setTimeout — StrictMode cleanup cleared the timer, second invocation saw ref as true → skipped entirely → message never sent | When using a ref to guard a one-time effect with setTimeout: set the ref INSIDE the timeout callback, not before. Pattern: `const t = setTimeout(() => { ref.current = true; doThing(); }, delay); return () => clearTimeout(t);`. StrictMode cleanup clears the timer, ref stays false, second invocation retries successfully.
+
+---
+
+## Override Context Fetch
+
+[2026-04-08] | Override context fetch effect depended on targetCompanyId — navigating to a page where targetCompanyId was set cleared overrideCtx | Override context fetch should only depend on submissionOverrideId, not targetCompanyId. The override takes priority over page-level company context. `showOverride = overrideCtx !== null` (no targetCompanyId check).
+
+[2026-04-08] | Company-switch message clearing in ChatPanelExpanded wiped override messages when navigating between company pages | Guard the switchingCompany message clear with `&& !submissionOverrideId`. When override is active, company-switch navigation should not clear messages.

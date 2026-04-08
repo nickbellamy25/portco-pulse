@@ -39,6 +39,7 @@ interface DocRecord {
 
 interface Props {
   token: string;
+  companyId?: string;
   companyName: string;
   firmName: string;
   initialMessages?: ChatMessage[];
@@ -57,10 +58,12 @@ interface Props {
   requiredDocs?: string;
   requiredDocCadences?: string;
   onMessagesChange?: (msgs: ChatMessage[]) => void;
+  onChipIntercept?: (chip: string) => boolean;
 }
 
 export function ChatInterface({
   token,
+  companyId,
   companyName,
   firmName,
   initialMessages = [],
@@ -79,6 +82,7 @@ export function ChatInterface({
   requiredDocs,
   requiredDocCadences,
   onMessagesChange,
+  onChipIntercept,
 }: Props) {
   // Restore submitted cards after the text history (they happened at the end of the prior session)
   const restoredMessages: ChatMessage[] = [
@@ -155,7 +159,7 @@ export function ChatInterface({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token,
+          ...(companyId ? { companyId } : { token }),
           message: userText,
           uploads: uploads.length > 0 ? uploads : undefined,
           contextDataType: sendContextDataType ?? undefined,
@@ -260,7 +264,7 @@ export function ChatInterface({
               fetch("/api/review", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "void_submission", token, submissionId: subId, voidReason: event.reason ?? null }),
+                body: JSON.stringify({ action: "void_submission", ...(companyId ? { companyId } : { token }), submissionId: subId, voidReason: event.reason ?? null }),
               }).then(() => {
                 // Remove the voided card from messages
                 setMessages((prev) => prev.filter((m) => {
@@ -324,7 +328,7 @@ export function ChatInterface({
       setIsLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
-  }, [token, contextDismissed, contextDataTypes, contextPeriods]);
+  }, [token, companyId, contextDismissed, contextDataTypes, contextPeriods]);
 
   // Scroll to bottom on mount if there are initial messages
   useEffect(() => {
@@ -384,7 +388,7 @@ export function ChatInterface({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "operator_confirmed",
-          token,
+          ...(companyId ? { companyId } : { token }),
           submissionType: editedPayload.submission_type,
           period: editedPayload.period ?? null,
           fiscalYear: editedPayload.fiscal_year ?? null,
@@ -437,7 +441,7 @@ export function ChatInterface({
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
         {/* Optional context panel — shown on fresh periodic sessions until first send */}
-        {mode === "periodic" && !contextDismissed && (
+        {mode === "periodic" && !contextDismissed && companyId && (
           <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-4 text-sm">
             {/* Row 1: data type */}
             <div className="flex flex-col gap-2">
@@ -653,6 +657,7 @@ export function ChatInterface({
                     key={chip}
                     type="button"
                     onClick={() => {
+                      if (onChipIntercept?.(chip)) return;
                       setUsedPromptChips((prev) => new Set([...prev, chip]));
                       sendMessage(chip, []);
                     }}
@@ -666,7 +671,7 @@ export function ChatInterface({
                   <button
                     key={fixedChip}
                     type="button"
-                    onClick={() => sendMessage(fixedChip, [])}
+                    onClick={() => { if (onChipIntercept?.(fixedChip)) return; sendMessage(fixedChip, []); }}
                     disabled={isLoading}
                     className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
                   >
@@ -719,6 +724,7 @@ export function ChatInterface({
             <FileUploadZone
               ref={fileUploadRef}
               token={token}
+              companyId={companyId}
               onUploadComplete={(results) => setPendingUploads((prev) => [...prev, ...results])}
               disabled={isLoading}
               pendingUploads={pendingUploads}

@@ -154,6 +154,7 @@ export async function GET(req: NextRequest) {
     : `You're viewing ${company.name}. Ask me anything about their data and submissions, or submit data on their behalf.`;
 
   return NextResponse.json({
+    companyId: company.id,
     token: (company as any).submissionToken as string,
     companyName: company.name,
     firmName,

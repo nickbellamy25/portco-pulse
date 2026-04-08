@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { auth } from "@/lib/auth";
 import { sendSubmissionVoidedEmail, sendSubmissionNotificationEmail } from "@/lib/server/email";
 import { writePeriodicSubmission, type DocRecord } from "@/lib/server/submissions";
 
@@ -27,19 +28,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { action, token, submissionType, period, fiscalYear, payload, submittedByUserId, docRecords, uploadedFiles, submissionId, voidReason } = body;
+  const { action, token, companyId: bodyCompanyId, submissionType, period, fiscalYear, payload, submittedByUserId, docRecords, uploadedFiles, submissionId, voidReason } = body;
 
   if (!["operator_confirmed", "void_submission"].includes(action)) {
     return NextResponse.json({ error: "unsupported_action" }, { status: 400 });
   }
 
-  if (!token) {
+  if (!token && !bodyCompanyId) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
 
-  const company = db.select().from(schema.companies).where(eq(schema.companies.submissionToken, token)).get();
+  let company;
+  if (token) {
+    company = db.select().from(schema.companies).where(eq(schema.companies.submissionToken, token)).get();
+  } else if (bodyCompanyId) {
+    // Firm-side investor: verify auth + firm ownership
+    const session = await auth();
+    const user = session?.user as any;
+    if (!user || user.persona !== "investor") {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    company = db.select().from(schema.companies).where(
+      and(eq(schema.companies.id, bodyCompanyId), eq(schema.companies.firmId, user.firmId))
+    ).get();
+  }
   if (!company) {
-    return NextResponse.json({ error: "invalid_token" }, { status: 401 });
+    return NextResponse.json({ message: "invalid_token" }, { status: 401 });
   }
 
   // ── Void a prior session submission ─────────────────────────────────────────

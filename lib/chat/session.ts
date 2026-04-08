@@ -12,6 +12,13 @@ export function deriveSessionKey(token: string, userId: string): string {
   return createHash("sha256").update(`${token}:${userId}`).digest("hex");
 }
 
+export function derivePulseSessionKey(firmId: string, userId: string, companyId?: string): string {
+  const seed = companyId
+    ? `pulse:${firmId}:${userId}:${companyId}`
+    : `pulse:${firmId}:${userId}:portfolio`;
+  return createHash("sha256").update(seed).digest("hex");
+}
+
 export interface StoredMessage {
   role: "user" | "assistant";
   content: string | object;

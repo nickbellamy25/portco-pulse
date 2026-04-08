@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { auth } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
 import * as XLSX from "xlsx";
@@ -46,16 +47,27 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const token = formData.get("token") as string | null;
+    const bodyCompanyId = formData.get("companyId") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "no_file", message: "No file provided." }, { status: 400 });
     }
 
-    // Validate token
-    if (!token) {
-      return NextResponse.json({ error: "no_token", message: "Token required." }, { status: 400 });
+    // Validate token or companyId
+    let company;
+    if (token) {
+      company = db.select().from(schema.companies).where(eq(schema.companies.submissionToken, token)).get();
+    } else if (bodyCompanyId) {
+      // Firm-side investor: verify auth + firm ownership
+      const session = await auth();
+      const user = session?.user as any;
+      if (!user || user.persona !== "investor") {
+        return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      }
+      company = db.select().from(schema.companies).where(
+        and(eq(schema.companies.id, bodyCompanyId), eq(schema.companies.firmId, user.firmId))
+      ).get();
     }
-    const company = db.select().from(schema.companies).where(eq(schema.companies.submissionToken, token)).get();
     if (!company) {
       return NextResponse.json({ error: "invalid_token", message: "Invalid token." }, { status: 401 });
     }

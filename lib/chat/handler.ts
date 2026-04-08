@@ -7,9 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { deriveSessionKey, loadHistory, saveMessage, buildAnthropicMessages, AnthropicContentBlock } from "./session";
-import { buildSystemPromptContext, assembleSystemPrompt, assembleOnboardingSystemPrompt } from "./system-prompt";
+import { eq, and } from "drizzle-orm";
+import { deriveSessionKey, derivePulseSessionKey, loadHistory, saveMessage, buildAnthropicMessages, AnthropicContentBlock } from "./session";
+import { buildSystemPromptContext, assembleSystemPrompt, assembleOnboardingSystemPrompt, buildPortfolioDataSection, assemblePortfolioQASystemPrompt } from "./system-prompt";
 import { writePeriodicSubmission } from "@/lib/server/submissions";
 import { auth } from "@/lib/auth";
 import type { UploadResult } from "@/app/api/upload/route";
@@ -465,6 +465,257 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
         }
       } catch (err: any) {
         console.error("[chat handler] Claude error:", err);
+        send({ type: "error", message: err.message ?? "Claude API error" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+// ─── Unified Pulse handler (firm-side investors) ─────────────────────────────
+
+export interface PulseChatRequestBody {
+  message: string;
+  companyId?: string;
+  uploads?: UploadResult[];
+  contextDataType?: "actuals" | "plan" | "both";
+  contextPeriods?: string;
+}
+
+export async function handlePulseChatRequest(req: NextRequest) {
+  const session = await auth();
+  const user = session?.user as any;
+  if (!user || user.persona !== "investor") {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  let body: PulseChatRequestBody;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const { message, companyId, uploads = [], contextDataType, contextPeriods } = body;
+  const firmId = user.firmId as string;
+  const userId = user.id as string;
+
+  const firm = db.select().from(schema.firms).where(eq(schema.firms.id, firmId)).get();
+  const firmName = firm?.name ?? "your firm";
+
+  // Look up company if companyId provided
+  let company: any = null;
+  if (companyId) {
+    company = db.select().from(schema.companies)
+      .where(and(eq(schema.companies.id, companyId), eq(schema.companies.firmId, firmId)))
+      .get();
+    if (!company) {
+      return NextResponse.json({ error: "company_not_found" }, { status: 404 });
+    }
+  }
+
+  // Build system prompt based on mode
+  let systemPrompt: string;
+  let tools: Anthropic.Tool[];
+  let docDetectionLine: string | null = null;
+
+  if (company) {
+    // Company mode: submission + Q&A
+    const ctx = buildSystemPromptContext(company, firmName, { includePortfolioData: true });
+    systemPrompt = assembleSystemPrompt(ctx);
+    tools = [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL];
+    docDetectionLine = buildDocDetectionLine(uploads, ctx.requiredDocs);
+  } else {
+    // Portfolio Q&A mode
+    const portfolioDataJson = buildPortfolioDataSection(firmId);
+    systemPrompt = assemblePortfolioQASystemPrompt(firmName, portfolioDataJson);
+    tools = [SUGGEST_QUICK_REPLIES_TOOL];
+  }
+
+  const sessionKey = derivePulseSessionKey(firmId, userId, companyId);
+  const history = loadHistory(sessionKey);
+
+  const OPENING_QUESTION = company
+    ? `You're viewing ${company.name}. Ask me anything about their data and submissions, or submit data on their behalf.`
+    : `How can I help you with your portfolio today?`;
+
+  // Build user content blocks (same logic as handleChatRequest)
+  const userContentBlocks: AnthropicContentBlock[] = [];
+
+  for (const upload of uploads) {
+    if (upload.extractionMethod === "vision" && upload.imageBase64) {
+      userContentBlocks.push({
+        type: "image",
+        source: { type: "base64", media_type: upload.imageMediaType ?? "image/jpeg", data: upload.imageBase64 },
+      });
+      userContentBlocks.push({ type: "text", text: `This is an uploaded document image from ${upload.fileName}. Please extract all KPI data visible in this image.` });
+    } else if (upload.extractionMethod === "pdf_document" && upload.pdfBase64) {
+      userContentBlocks.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf" as const, data: upload.pdfBase64 },
+      } as any);
+      userContentBlocks.push({ type: "text", text: `This is a PDF document: ${upload.fileName}. Please extract all KPI data, financial figures, and relevant information from it.` });
+    } else if (upload.extractedText) {
+      userContentBlocks.push({ type: "text", text: upload.extractedText });
+    }
+  }
+
+  if (message.trim()) {
+    userContentBlocks.push({ type: "text", text: message });
+  }
+
+  const isGreeting = userContentBlocks.length === 0;
+  if (isGreeting) {
+    userContentBlocks.push({ type: "text", text: "Hello" });
+  }
+
+  // Prepend pre-chat context if provided
+  if (company && !isGreeting && history.length === 0 && (contextDataType || contextPeriods?.trim())) {
+    const contextLines = ["[Submitter provided pre-chat context:]"];
+    if (contextDataType) contextLines.push(`- Submitting: ${contextDataType}`);
+    if (contextPeriods?.trim()) contextLines.push(`- Period(s): ${contextPeriods.trim()}`);
+    userContentBlocks.unshift({ type: "text", text: contextLines.join("\n") });
+  }
+
+  // Save user message
+  if (!isGreeting) {
+    const userStoredContent = [
+      ...uploads.map((u) => `[Attached: ${u.fileName}]`),
+      message,
+    ].filter(Boolean).join("\n");
+    saveMessage(sessionKey, companyId ?? "portfolio", "user", userStoredContent, "text");
+  }
+
+  const anthropicMessages = buildAnthropicMessages(history, userContentBlocks, OPENING_QUESTION);
+
+  // Detect submission intent for tool_choice forcing (only in company mode)
+  const numberMatches = message.match(/\$?\d[\d,.]+%?/g) || [];
+  const looksLikeSubmission = company && (uploads.length > 0 || numberMatches.length >= 3);
+  const toolChoice: Anthropic.MessageCreateParams["tool_choice"] | undefined =
+    looksLikeSubmission && !isGreeting
+      ? { type: "tool" as const, name: "submit_structured_data" }
+      : undefined;
+
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(data: object) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      }
+
+      try {
+        if (docDetectionLine) {
+          send({ type: "doc_detection", line: docDetectionLine });
+        }
+
+        let fullText = "";
+
+        const claudeStream = anthropic.messages.stream({
+          model: "claude-sonnet-4-6",
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: anthropicMessages as any,
+          tools,
+          ...(toolChoice ? { tool_choice: toolChoice } : {}),
+        });
+
+        for await (const event of claudeStream) {
+          if (event.type === "content_block_delta") {
+            const delta = event.delta as any;
+            if (delta.type === "text_delta") {
+              fullText += delta.text;
+              send({ type: "text", content: delta.text });
+            }
+          }
+
+          if (event.type === "message_stop") {
+            const finalMsg = await claudeStream.finalMessage();
+
+            if (fullText) {
+              saveMessage(sessionKey, companyId ?? "portfolio", "assistant", fullText, "text");
+            }
+
+            const submitBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "submit_structured_data"
+            ) as any;
+            const repliesBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "suggest_quick_replies"
+            ) as any;
+            const noteBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "save_submission_note"
+            ) as any;
+            const docBlocks = finalMsg.content.filter(
+              (b) => b.type === "tool_use" && b.name === "record_document"
+            ) as any[];
+            const voidBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "void_session_submission"
+            ) as any;
+            const showLastCardBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "show_last_card"
+            ) as any;
+
+            if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock) {
+              saveMessage(sessionKey, companyId ?? "portfolio", "assistant", finalMsg.content, "tool_call");
+            }
+
+            // Periodic submission: send to client for confirmation
+            if (submitBlock) {
+              const payload = submitBlock.input?.payload ?? submitBlock.input;
+              send({ type: "tool_call", name: "submit_structured_data", payload });
+            }
+
+            if (repliesBlock) {
+              const replies = repliesBlock.input?.replies;
+              if (Array.isArray(replies) && replies.length > 0) {
+                send({ type: "quick_replies", replies });
+              }
+            }
+
+            for (const docBlock of docBlocks) {
+              send({ type: "tool_call", name: "record_document", record: docBlock.input });
+            }
+
+            if (voidBlock) {
+              send({
+                type: "tool_call",
+                name: "void_session_submission",
+                period: voidBlock.input?.period ?? null,
+                fiscalYear: voidBlock.input?.fiscal_year ?? null,
+                reason: voidBlock.input?.reason ?? null,
+              });
+            }
+
+            if (showLastCardBlock) {
+              send({ type: "show_last_card" });
+            }
+
+            if (noteBlock && company) {
+              const newNote = noteBlock.input?.note?.trim();
+              if (newNote) {
+                const existing = (company as any).submissionNotes ?? "";
+                const updated = existing ? `${existing}\n- ${newNote}` : `- ${newNote}`;
+                db.update(schema.companies)
+                  .set({ submissionNotes: updated } as any)
+                  .where(eq(schema.companies.id, company.id))
+                  .run();
+              }
+            }
+
+            send({ type: "done", stopReason: finalMsg.stop_reason });
+          }
+        }
+      } catch (err: any) {
+        console.error("[chat/pulse] Claude error:", err);
         send({ type: "error", message: err.message ?? "Claude API error" });
       } finally {
         controller.close();

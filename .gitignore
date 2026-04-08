@@ -51,3 +51,4 @@ next-env.d.ts
 # local test data / scratch files
 *.csv
 *.txt
+.claude/

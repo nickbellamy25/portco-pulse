@@ -408,3 +408,9 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-08] | Override context fetch effect depended on targetCompanyId — navigating to a page where targetCompanyId was set cleared overrideCtx | Override context fetch should only depend on submissionOverrideId, not targetCompanyId. The override takes priority over page-level company context. `showOverride = overrideCtx !== null` (no targetCompanyId check).
 
 [2026-04-08] | Company-switch message clearing in ChatPanelExpanded wiped override messages when navigating between company pages | Guard the switchingCompany message clear with `&& !submissionOverrideId`. When override is active, company-switch navigation should not clear messages.
+
+---
+
+## Chat Panel — Context Card on Dashboard
+
+[2026-04-08] | "What data are you submitting?" context card showed on Dashboard Q&A mode — no company selected but card still rendered | ChatInterface line 444 condition must include `&& companyId` — the context card should only show when a company is actually selected for submission, not in portfolio Q&A mode. The root cause was PersistentChatPanel always passing `mode="periodic"` to ChatInterface regardless of whether a company was active.

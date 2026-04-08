@@ -443,16 +443,37 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 
 ---
 
+### Session 2026-04-08 (continued) — Context card fix on Dashboard
+
+**Problem:** Opening Pulse AI panel on the Dashboard showed the "What data are you submitting?" submission context card (Actuals/Plan selector + period picker) instead of the Portfolio Q&A chips. The panel should be in Q&A mode on Dashboard since no company is selected.
+
+**Root cause:** `PersistentChatPanel.tsx` always passes `mode="periodic"` to `ChatInterface` (line 365). `ChatInterface` shows the context card when `mode === "periodic" && !contextDismissed` (line 444). Since Dashboard has no company selected (`effectiveCompanyId` is null), the panel should be in Q&A mode — but `mode="periodic"` was unconditionally set.
+
+**Fix:** Added `&& companyId` to the context card render condition in `ChatInterface.tsx` line 444. Now the card only renders when there's an actual company to submit data for. Portfolio Q&A mode (no companyId) skips the card and shows chips directly.
+
+**File changed:** `app/submit/[token]/_components/ChatInterface.tsx` — line 444 condition.
+
 ## What's next — Phase 3 remaining
 
+**Uncommitted changes from previous session (MUST commit):**
+- Firm-side submission routing from Pulse AI panel (per-page chat storage, StrictMode autoMessage fix)
+- `/api/chat/pulse` endpoint (new)
+- Context API: returns companyId, requiredDocs, requiredDocCadences
+- Review API: auth import added
+- Upload API: changes for PDF extraction
+- ChatInterface: context card fix (companyId guard), submission routing fixes
+- PersistentChatPanel: major refactor for per-page storage + submission routing
+- handler.ts: tool_choice forcing for submissions, show_last_card tool
+- session.ts: document type extension
+
 **Phase 3 remaining:**
-1. **Firm-side submission routing — verify fix** — per-page chat storage implemented, auto-send StrictMode fix applied. Needs end-to-end testing: paste KPI data on Dashboard → submit/cancel → navigate away → navigate back → verify card persists. Also test: file drag-drop submission, company picker flow, override dismissal via back button.
-2. Wire company-specific KPIs into chat submission
-3. Fix variance coloring for lower-is-better KPIs (CapEx, Churn Rate, etc.)
-4. Submission Tracking UX review
-5. Combined financials edge case
-6. Blocklist mode for member access scopes
-7. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green (matching Submission Tracking). If still red, debug: check upload handler detection during file submission, ensure detectedDocs state populated, trace data from context API to ConfirmationSummary.
+1. Wire company-specific KPIs into chat submission
+2. Fix variance coloring for lower-is-better KPIs (CapEx, Churn Rate, etc.)
+3. Submission Tracking UX review
+4. Combined financials edge case
+5. Blocklist mode for member access scopes
+6. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green (matching Submission Tracking)
+7. **End-to-end testing needed** — firm-side submission routing, per-page chat persistence, drag-drop file submission
 
 **Demo prep remaining:**
 - Test full drag-drop submission flow end-to-end (Brighton XLSX, Apex TXT, Culinary PDF)

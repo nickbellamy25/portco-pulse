@@ -6,6 +6,7 @@ import type { UploadResult } from "@/app/api/upload/route";
 
 interface Props {
   token: string;
+  companyId?: string;
   onUploadComplete: (results: UploadResult[]) => void;
   disabled?: boolean;
   pendingUploads: UploadResult[];
@@ -41,7 +42,7 @@ function guessMimeFromName(name: string): string {
 }
 
 export const FileUploadZone = forwardRef<FileUploadZoneHandle, Props>(function FileUploadZone(
-  { token, onUploadComplete, disabled, pendingUploads, onRemoveUpload, compact = false },
+  { token, companyId, onUploadComplete, disabled, pendingUploads, onRemoveUpload, compact = false },
   ref
 ) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +89,7 @@ export const FileUploadZone = forwardRef<FileUploadZoneHandle, Props>(function F
         const fd = new FormData();
         fd.append("file", blob, file.name);
         fd.append("token", token);
+        if (companyId) fd.append("companyId", companyId);
 
         const res = await fetch("/api/upload", { method: "POST", body: fd });
         const text = await res.text();

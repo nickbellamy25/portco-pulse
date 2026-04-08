@@ -368,3 +368,19 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-08] | Claude said it couldn't re-show a submitted card — suggested resubmitting | Added show_last_card tool (handler.ts). System prompt instructs Claude to call it when asked to re-show/redisplay. Client finds last submittedPayload message and appends a read-only copy at current conversation position. Does NOT create a new draft — re-shows the submitted card with green badge.
 
 [2026-04-08] | First attempt used submit_structured_data to re-show — created a new draft instead of showing the submitted card | show_last_card is a SEPARATE tool from submit_structured_data. Never use submit_structured_data to re-show — that creates a new draft. show_last_card re-displays the existing submitted card read-only.
+
+---
+
+## Firm-Side Submission Routing
+
+[2026-04-08] | Firm-side investors typing KPI data in Pulse AI panel on Dashboard got markdown analysis instead of submission card | PortfolioQAPane sends to /api/chat/qa which has NO submission tools. Only CompanyChat (Analytics/Settings pages) has submit_structured_data. Need to route submission-intent messages through CompanyChat regardless of which page the user is on.
+
+[2026-04-08] | System prompt changes alone (operator→user, stronger wording) didn't make Claude call submit_structured_data | Prompt-only approach failed after 3 attempts. Structural fix required: handler.ts now uses tool_choice: { type: "tool", name: "submit_structured_data" } when 3+ numbers detected in message. This forces the tool call.
+
+[2026-04-08] | tool_choice: { type: "any" } let Claude pick suggest_quick_replies instead of submit_structured_data | Must use { type: "tool", name: "submit_structured_data" } to force the specific tool. "any" just means "must use at least one tool" — doesn't guarantee which.
+
+[2026-04-08] | ChatInterface autoMessage useEffect had sendMessage in dependency array — cleanup canceled the timeout on re-render | Use sendMessageRef pattern: store sendMessage in a ref, call sendMessageRef.current() in the timeout, remove sendMessage from deps. Prevents re-render from canceling the auto-send.
+
+[2026-04-08] | submit_structured_data tool_call created blank bubble above submission card | Line 180 adds empty assistant placeholder for streaming text. When tool-only response arrives (no text), placeholder stays empty. Fix: tool_call handler checks if last message is empty placeholder and replaces it in-place instead of appending.
+
+[2026-04-08] | Context API showed canceled cards as "Submitted" after navigation | context/route.ts reconstructs all submit_structured_data tool calls as submittedPayload. Fix: check if real submission exists in DB (submissions table). If not found → canceledPayload instead of submittedPayload.

@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
     role: "user" | "assistant";
     content: string;
     submittedPayload?: Record<string, unknown>;
+    canceledPayload?: Record<string, unknown>;
     detectedDocuments?: string[];
     divider?: string;
   };
@@ -88,6 +89,7 @@ export async function GET(req: NextRequest) {
           if (payload) {
             // Look up documents recorded for this submission
             let docTypes: string[] = [];
+            let hasRealSubmission = false;
             if (payload.period) {
               const periodRow = db
                 .select()
@@ -109,6 +111,7 @@ export async function GET(req: NextRequest) {
                   .limit(1)
                   .get();
                 if (submission) {
+                  hasRealSubmission = true;
                   const docs = db
                     .select()
                     .from(schema.financialDocuments)
@@ -125,12 +128,20 @@ export async function GET(req: NextRequest) {
                 }
               }
             }
-            initialMessages.push({
-              role: "assistant",
-              content: "",
-              submittedPayload: payload,
-              detectedDocuments: docTypes.length > 0 ? docTypes : undefined,
-            });
+            if (hasRealSubmission) {
+              initialMessages.push({
+                role: "assistant",
+                content: "",
+                submittedPayload: payload,
+                detectedDocuments: docTypes.length > 0 ? docTypes : undefined,
+              });
+            } else {
+              initialMessages.push({
+                role: "assistant",
+                content: "",
+                canceledPayload: payload,
+              });
+            }
           }
         }
       }

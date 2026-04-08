@@ -21,7 +21,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const SUBMIT_STRUCTURED_DATA_TOOL: Anthropic.Tool = {
   name: "submit_structured_data",
   description:
-    "Call this immediately after extracting all available KPI data — do NOT wait for operator confirmation. An editable review card appears automatically for the operator to correct values before submitting. Pass the complete extracted JSON object.",
+    "Call this IMMEDIATELY after extracting KPI values from user input. NEVER present a markdown table instead — this tool IS the response. An editable review card appears automatically for the user to correct values before submitting. Pass the complete extracted JSON object.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -300,6 +300,15 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
     ? [SUBMIT_STRUCTURED_DATA_ONBOARDING_TOOL, SUGGEST_QUICK_REPLIES_TOOL, RECORD_DOCUMENT_TOOL, SAVE_SUBMISSION_NOTE_TOOL]
     : [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL];
 
+  // Detect submission intent: user is providing KPI data, not asking a question
+  // Heuristic: 3+ distinct numbers (dollar amounts, percentages, plain numbers) or file uploads
+  const numberMatches = message.match(/\$?\d[\d,.]+%?/g) || [];
+  const looksLikeSubmission = uploads.length > 0 || numberMatches.length >= 3;
+  const toolChoice: Anthropic.MessageCreateParams["tool_choice"] | undefined =
+    mode === "periodic" && looksLikeSubmission && !isGreeting
+      ? { type: "tool" as const, name: "submit_structured_data" }
+      : undefined;
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -321,6 +330,7 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
           system: systemPrompt,
           messages: anthropicMessages as any,
           tools,
+          ...(toolChoice ? { tool_choice: toolChoice } : {}),
         });
 
         for await (const event of claudeStream) {

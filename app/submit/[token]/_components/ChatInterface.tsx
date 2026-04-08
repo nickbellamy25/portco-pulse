@@ -208,10 +208,17 @@ export function ChatInterface({
           if (event.type === "tool_call" && event.name === "submit_structured_data") {
             const p = event.payload as SubmissionPayload;
             setPendingPayload(p); // keep for backward compat (file upload zone hide)
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: "", pendingPayload: p },
-            ]);
+            setMessages((prev) => {
+              // If the last message is an empty assistant placeholder (from streaming setup),
+              // replace it with the card instead of appending a new message
+              const last = prev[prev.length - 1];
+              if (last && last.role === "assistant" && !last.content && !last.pendingPayload && !last.submittedPayload) {
+                const updated = [...prev];
+                updated[updated.length - 1] = { ...last, pendingPayload: p };
+                return updated;
+              }
+              return [...prev, { role: "assistant", content: "", pendingPayload: p }];
+            });
           }
 
           if (event.type === "tool_call" && event.name === "record_document" && event.record?.fileName) {
@@ -327,6 +334,10 @@ export function ChatInterface({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Ref to always call the latest sendMessage without re-triggering the effect
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+
   useEffect(() => {
     if (autoMessage && !autoMessageSentRef.current) {
       autoMessageSentRef.current = true;
@@ -339,10 +350,11 @@ export function ChatInterface({
       });
       if (docs.length > 0) setDetectedDocs(prev => [...new Set([...prev, ...docs])]);
       // Small delay so the component is fully mounted
-      const t = setTimeout(() => sendMessage(autoMessage, uploads), 100);
+      const t = setTimeout(() => sendMessageRef.current(autoMessage, uploads), 100);
       return () => clearTimeout(t);
     }
-  }, [autoMessage, autoUploads, sendMessage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMessage, autoUploads]);
 
   useEffect(() => {
     if (!input && textareaRef.current) {

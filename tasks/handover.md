@@ -364,17 +364,56 @@ Six chat pane fixes:
 - User may need to hard-refresh (Ctrl+Shift+R) or navigate away and back to trigger fresh API call
 - If badges still show red after refresh, investigate: upload handler detection, record_document tool calls, or detectedDocs state flow
 
+### Session 2026-04-08 (continued) — Firm-side submission routing from Pulse AI panel
+
+**Problem:** When a firm-side investor types KPI data into the Pulse AI panel (on Dashboard or any page), the data was sent to `/api/chat/qa` which has NO submission tools — Claude could only produce markdown analysis, never a submission card.
+
+**Root cause:** The panel renders `PortfolioQAPane` (Q&A endpoint) on Dashboard/Submissions pages. Only Analytics and Company Settings pages route to `CompanyChat` (submission endpoint). The user expected submissions to work from any page.
+
+**Changes made (5 files, partially working):**
+
+1. `lib/chat/system-prompt.ts` — Changed "operator" → "user" throughout `assembleSystemPrompt()` so firm-side investors aren't treated differently from operators. Added stronger INTENT RECOGNITION section.
+
+2. `lib/chat/handler.ts` — Added `tool_choice: { type: "tool", name: "submit_structured_data" }` when message has 3+ numbers or file uploads (forces tool call instead of markdown). Updated tool description.
+
+3. `components/layout/PersistentChatPanel.tsx`:
+   - Added submission-data detection in PortfolioQAPane's `sendMessage` (3+ numbers → submission intent)
+   - Added company auto-detection from message text using `matchCompanyFromFilename`
+   - Added `onTextSubmission` callback + `handleTextSubmission` in parent to route text submissions through CompanyChat override
+   - Added `autoMessageOverride` prop to CompanyChat for passing user's original text
+   - CompanyChat starts with empty messages when `autoMessageOverride` is set (no old history)
+   - "Portfolio chat" back button hidden during text submissions
+   - Route-change message clear skips when `submissionOverrideId` is active
+
+4. `app/submit/[token]/_components/ChatInterface.tsx`:
+   - `submit_structured_data` tool_call handler now replaces empty placeholder instead of appending (prevents blank bubble)
+   - `sendMessageRef` pattern to prevent autoMessage useEffect cleanup from canceling the timeout
+
+5. `app/api/chat/context/route.ts` — Added `canceledPayload` to InitialMsg type. Checks whether real submission exists in DB before marking as submitted vs canceled.
+
+**Current status — TWO BUGS REMAIN:**
+
+1. **Paste twice required**: First paste detects company, switches to CompanyChat with `autoMessageOverride`, but the auto-send doesn't fire reliably. User has to paste again. The `sendMessageRef` fix was applied but isn't working. Suspect: the issue may be in CompanyChat's rendering lifecycle, not ChatInterface's useEffect. Need to add console.log tracing to find where the message gets lost in the chain: PortfolioQAPane → handleTextSubmission → CompanyChat mount → ChatInterface mount → autoMessage useEffect → sendMessageRef.current().
+
+2. **Messages disappear on navigation**: Even with the `submissionOverrideId` guard on the pathname-change clear, messages still disappear. Suspect: the override itself may be getting torn down. The `submissionOverrideId` state lives in ChatPanelExpanded, which may unmount/remount during navigation, resetting all state. Or the context fetch for the normal company (non-override) may overwrite the override context. Need to trace: does `submissionOverrideId` survive navigation? Does `overrideCtx` persist? Does `showOverride` stay true?
+
+**Recommended approach for next session:**
+1. Add console.log tracing at each step of the override flow to identify exactly where it breaks
+2. Consider simplifying the architecture: instead of the 4-component hop (QAPane → Parent → CompanyChat → ChatInterface), consider making the QA endpoint itself support submission when company is identified
+3. OR: move the submission detection + company matching to the parent component so it happens before the QA pane even renders
+
 ---
 
 ## What's next — Phase 3 remaining
 
 **Phase 3 remaining:**
-1. Wire company-specific KPIs into chat submission
-2. Fix variance coloring for lower-is-better KPIs (CapEx, Churn Rate, etc.)
-3. Submission Tracking UX review
-4. Combined financials edge case
-5. Blocklist mode for member access scopes
-6. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green (matching Submission Tracking). If still red, debug: check upload handler detection during file submission, ensure detectedDocs state populated, trace data from context API to ConfirmationSummary.
+1. **Fix firm-side submission routing** — two bugs remain (auto-send not firing, messages not persisting on navigation). See handover for details and debugging approach.
+2. Wire company-specific KPIs into chat submission
+3. Fix variance coloring for lower-is-better KPIs (CapEx, Churn Rate, etc.)
+4. Submission Tracking UX review
+5. Combined financials edge case
+6. Blocklist mode for member access scopes
+7. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green (matching Submission Tracking). If still red, debug: check upload handler detection during file submission, ensure detectedDocs state populated, trace data from context API to ConfirmationSummary.
 
 **Demo prep remaining:**
 - Test full drag-drop submission flow end-to-end (Brighton XLSX, Apex TXT, Culinary PDF)

@@ -222,6 +222,7 @@ function ChatPanelExpanded({
   const [overrideCtx, setOverrideCtx] = useState<CompanyContext | null>(null);
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [pendingSubmissionFiles, setPendingSubmissionFiles] = useState<File[]>([]);
+  const [pendingSubmissionText, setPendingSubmissionText] = useState<string | null>(null);
 
   // Company ID from URL — only honoured on relevant routes
   const companyIdFromUrl: string | null =
@@ -239,13 +240,15 @@ function ChatPanelExpanded({
   const prevCompanyIdRef = useRef<string | null | undefined>(undefined);
   const prevPathnameRef = useRef(pathname);
 
-  // Clear chat messages whenever the page route changes
+  // Clear chat messages whenever the page route changes (skip if override submission is active)
   useEffect(() => {
     if (prevPathnameRef.current !== pathname) {
       prevPathnameRef.current = pathname;
-      setChatMessages([]);
+      if (!submissionOverrideId) {
+        setChatMessages([]);
+      }
     }
-  }, [pathname, setChatMessages]);
+  }, [pathname, setChatMessages, submissionOverrideId]);
 
   useEffect(() => {
     // Skip if the target hasn't changed
@@ -304,6 +307,14 @@ function ChatPanelExpanded({
     setChatMessages([]);
     setOverrideCtx(null);
     setPendingSubmissionFiles([]);
+    setPendingSubmissionText(null);
+  }
+
+  function handleTextSubmission(text: string, companyId: string) {
+    setPendingSubmissionText(text);
+    setPendingSubmissionFiles([]); // Clear any stale files from previous submissions
+    setChatMessages([]);
+    setSubmissionOverrideId(companyId);
   }
 
   function handleFileSubmission(files: File[], companyId: string) {
@@ -332,8 +343,8 @@ function ChatPanelExpanded({
         </button>
       </div>
 
-      {/* Back button when override is active (hidden during file-submission mode) */}
-      {showOverride && pendingSubmissionFiles.length === 0 && (
+      {/* Back button when override is active (hidden during file/text submission mode) */}
+      {showOverride && pendingSubmissionFiles.length === 0 && !pendingSubmissionText && (
         <button
           type="button"
           onClick={handleBackToPortfolio}
@@ -358,6 +369,7 @@ function ChatPanelExpanded({
             onSubmitForCompany={null}
             autoSubmit={true}
             initialFiles={pendingSubmissionFiles}
+            autoMessageOverride={pendingSubmissionText ?? undefined}
           />
         ) : ctx === null ? (
           <div className="flex flex-1 items-center justify-center p-4 text-center">
@@ -372,6 +384,7 @@ function ChatPanelExpanded({
             firmId={firmId}
             onSubmitForCompany={(id) => setSubmissionOverrideId(id)}
             onFileSubmission={handleFileSubmission}
+            onTextSubmission={handleTextSubmission}
             pathname={pathname}
           />
         ) : (
@@ -399,6 +412,7 @@ function CompanyChat({
   onSubmitForCompany,
   autoSubmit,
   initialFiles,
+  autoMessageOverride,
 }: {
   ctx: CompanyContext;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -408,6 +422,7 @@ function CompanyChat({
   onSubmitForCompany: ((companyId: string) => void) | null;
   autoSubmit?: boolean;
   initialFiles?: File[];
+  autoMessageOverride?: string;
 }) {
   const pathname = usePathname();
   const [autoUploads, setAutoUploads] = useState<UploadResult[] | undefined>(undefined);
@@ -473,8 +488,11 @@ function CompanyChat({
     : `Submit this period's data for ${ctx.companyName}`;
 
   // Use persisted unified messages if available; otherwise fall back to company's DB history
+  // When autoMessageOverride is set (text submission from QA pane), start fresh — don't load old history
   const effectiveInitialMessages =
-    messages.length > 0
+    autoMessageOverride
+      ? []
+      : messages.length > 0
       ? messages
       : ctx.initialMessages && ctx.initialMessages.length > 0
       ? ctx.initialMessages
@@ -492,8 +510,10 @@ function CompanyChat({
     );
   }
 
-  // Build the auto-message: include file context when files were uploaded
-  const autoMessage = autoSubmit
+  // Build the auto-message: use override if provided, otherwise include file context when files were uploaded
+  const autoMessage = autoMessageOverride
+    ? autoMessageOverride
+    : autoSubmit
     ? (autoUploads && autoUploads.length > 0
         ? `Submitting actuals for the current period. The attached file contains financial data for ${ctx.companyName}. Extract all KPI values from every sheet/section — look for Revenue, Gross Margin, EBITDA, Cash Balance, CapEx, Operating Cash Flow, Headcount, NPS, Employee Turnover, and any other tracked metrics. Include detected financial statement types (Income Statement, Balance Sheet, Cash Flow) in the submission.`
         : `Submit this period's data for ${ctx.companyName}`)
@@ -539,10 +559,11 @@ interface PortfolioQAPaneProps {
   firmId: string | undefined;
   onSubmitForCompany: (companyId: string) => void;
   onFileSubmission: (files: File[], companyId: string) => void;
+  onTextSubmission: (text: string, companyId: string) => void;
   pathname: string;
 }
 
-function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, onFileSubmission, pathname }: PortfolioQAPaneProps) {
+function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, onFileSubmission, onTextSubmission, pathname }: PortfolioQAPaneProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [outstandingData, setOutstandingData] = useState<{
@@ -684,6 +705,8 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, on
 
   // Stash files when user picks a company from the picker (file-submission flow)
   const [filesForPicker, setFilesForPicker] = useState<File[]>([]);
+  // Stash text when submission-like message detected (text-submission flow)
+  const [stashedSubmissionMessage, setStashedSubmissionMessage] = useState<string | null>(null);
 
   const sendMessage = useCallback(
     async (q: string) => {
@@ -709,6 +732,24 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, on
         // No match — show company picker with files stashed
         setFilesForPicker(files);
         setShowCompanyPicker(true);
+        return;
+      }
+
+      // Detect submission-like messages: 3+ numbers suggest KPI data, not a question
+      const numberMatches = q.match(/\$?\d[\d,.]+%?/g) || [];
+      if (numberMatches.length >= 3) {
+        // Try to auto-detect company from message text
+        const matchedCompanyId = matchCompanyFromFilename(q, companyList);
+        if (matchedCompanyId) {
+          // Company detected — route directly to submission, skip picker
+          onTextSubmission(q, matchedCompanyId);
+          setInput("");
+          return;
+        }
+        // No company match — show picker as fallback
+        setStashedSubmissionMessage(q);
+        setShowCompanyPicker(true);
+        setInput("");
         return;
       }
 
@@ -815,7 +856,7 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, on
         );
       }
     },
-    [isLoading, companyList, onFileSubmission, qaPendingFiles]
+    [isLoading, companyList, onFileSubmission, onTextSubmission, qaPendingFiles]
   );
 
   function handleChipClick(chip: string) {
@@ -1003,7 +1044,7 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, on
               <span className="text-[11px] font-medium text-muted-foreground">Select a company to submit for:</span>
               <button
                 type="button"
-                onClick={() => { setShowCompanyPicker(false); setFilesForPicker([]); }}
+                onClick={() => { setShowCompanyPicker(false); setFilesForPicker([]); setStashedSubmissionMessage(null); }}
                 className="text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Cancel"
               >
@@ -1020,7 +1061,10 @@ function PortfolioQAPane({ messages, setMessages, firmId, onSubmitForCompany, on
                     type="button"
                     onClick={() => {
                       setShowCompanyPicker(false);
-                      if (filesForPicker.length > 0) {
+                      if (stashedSubmissionMessage) {
+                        onTextSubmission(stashedSubmissionMessage, company.id);
+                        setStashedSubmissionMessage(null);
+                      } else if (filesForPicker.length > 0) {
                         onFileSubmission(filesForPicker, company.id);
                         setFilesForPicker([]);
                       } else {

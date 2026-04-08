@@ -2,7 +2,7 @@
 
 ## Current state (as of 2026-04-07)
 
-The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. This session focused on: chat chip + submission refactor (Part 1 + Part 2), multiple UX fixes, PDF extraction improvements, firm name editing, Firm Settings restructure, and notification polish.
+The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. Latest session focused on: chat submission card fixes, chat panel navigation reset, submission tracking investment date filtering, company onboarding flow, and ConfirmationSummary compact sizing.
 
 ---
 
@@ -266,21 +266,45 @@ Six chat pane fixes:
 
 ---
 
+### Session 2026-04-07 (continued) — Chat submission card + navigation fixes
+
+**Chat submission card fixes (ChatInterface + ConfirmationSummary):**
+- Submission card persists after Submit: atomic swap in handleConfirm (accepts messageIndex, single setMessages call)
+- Removed "Submitted to..." text message — green "Submitted" badge on card is sufficient
+- Company name added as primary heading on confirmation card (ConfirmationSummary gains `companyName` prop)
+- Font hierarchy: company name = text-base semibold, period = text-sm muted
+- Prompt chips reappear after completed submission (findLastIndex check instead of any-user-message check)
+- Documents detected + Missing KPIs banners now visible on submitted cards (removed `!isSubmitted` guards)
+- `compact` prop on ConfirmationSummary: text-[11px] labels/values, text-[10px] notes/headers, tighter padding
+- Drag highlight counter fix: dragEnter/dragLeave use ref counter to prevent flicker on child elements
+- detectedDocs now populated from Claude's `record_document` tool calls (not just upload auto-detection)
+- detectedDocuments stored on message object for persistence across remounts
+
+**Chat panel navigation reset:**
+- Added pathname-watching useEffect in ChatPanelExpanded: clears chatMessages on every route change
+- Added `key={ctx.companyId}` on both CompanyChat renders: forces remount when company changes on same page
+- Standard UX: chat starts fresh on each page, context chips are page-appropriate
+
+**Submission tracking + onboarding:**
+- Companies filtered by investmentDate in getSubmissionTracking — only show from investment month onwards
+- New companies get `onboardingStatus: "pending"` on creation (appear on Onboarding tab immediately)
+- Auto in-app notification on company creation (onboarding_request event type)
+
+---
+
 ## What's next — Phase 3 remaining
 
 **Phase 3 remaining:**
 1. Wire company-specific KPIs into chat submission
 2. Fix variance coloring for lower-is-better KPIs (CapEx, Churn Rate, etc.)
 3. Submission Tracking UX review
-4. Verify chat-submitted data surfaces in Submission Tracking matrix
-5. Combined financials edge case
-6. Blocklist mode for member access scopes
+4. Combined financials edge case
+5. Blocklist mode for member access scopes
 
 **Demo prep remaining:**
 - Test full drag-drop submission flow end-to-end (Brighton XLSX, Apex TXT, Culinary PDF)
-- Verify document badges show green on Submission Tracking after chat submission
-- Verify KPI table stays visible after clicking Submit
 - Test onboarding flow with Pinnacle historical XLSX
+- Verify chat panel resets properly across all navigation paths
 
 ---
 
@@ -312,6 +336,12 @@ Six chat pane fixes:
 - **Firm Settings General tab**: "Firm Name" (→ firms.name + emailSettings.fromName) + "From Email" in their own section with dedicated Save button. Tab renamed General; subheadings: Firm Details, Team Access.
 - **In-app notification titles**: always short and specific (company + period/event), never email subject string.
 - **Topbar notification poll**: 10s interval.
+- **Chat resets on navigation**: pathname-watching useEffect clears chatMessages on every route change. CompanyChat has `key={ctx.companyId}` for same-page company switches.
+- **Submission card persistence**: handleConfirm does atomic swap (pendingPayload→submittedPayload) in a single setMessages call. No separate success message. detectedDocuments stored on the message object.
+- **ConfirmationSummary compact sizing**: text-[11px] for labels/values, text-[10px] for notes/section headers/banners, px-2.5 py-2 padding.
+- **Prompt chips after submission**: chips reappear when lastSubmittedIndex > lastUserIndex (conversation cycle complete).
+- **Company onboarding**: new companies get `onboardingStatus: "pending"` + in-app notification on creation.
+- **Submission tracking date filter**: companies filtered by investmentDate — only shown from investment month onwards.
 
 ---
 

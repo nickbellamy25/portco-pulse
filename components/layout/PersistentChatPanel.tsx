@@ -235,6 +235,15 @@ function ChatPanelExpanded({
 
   const prevTargetRef = useRef<string | null | undefined>(undefined);
   const prevCompanyIdRef = useRef<string | null | undefined>(undefined);
+  const prevPathnameRef = useRef(pathname);
+
+  // Clear chat messages whenever the page route changes
+  useEffect(() => {
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname;
+      setChatMessages([]);
+    }
+  }, [pathname, setChatMessages]);
 
   useEffect(() => {
     // Skip if the target hasn't changed
@@ -340,6 +349,7 @@ function ChatPanelExpanded({
           </div>
         ) : showOverride ? (
           <CompanyChat
+            key={overrideCtx!.companyId}
             ctx={overrideCtx!}
             messages={chatMessages}
             onMessagesChange={setChatMessages}
@@ -364,6 +374,7 @@ function ChatPanelExpanded({
           />
         ) : (
           <CompanyChat
+            key={ctx.companyId}
             ctx={ctx}
             messages={chatMessages}
             onMessagesChange={setChatMessages}

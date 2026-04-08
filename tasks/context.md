@@ -269,6 +269,50 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 
 ---
 
+## Session 2026-04-07 — Chat Submission Card Fixes
+
+[2026-04-07] | Submission card disappeared after clicking Submit — race condition between onConfirm swap and handleConfirm success message | Atomic swap: handleConfirm now accepts messageIndex and does the pendingPayload→submittedPayload swap in a single setMessages call. No separate success message appended — the green "Submitted" badge on the card is sufficient.
+
+[2026-04-07] | "Submitted to..." message after the card was redundant | Removed entirely. The submitted card with its green badge is the confirmation.
+
+[2026-04-07] | Company name missing from confirmation card header | Added `companyName` prop to ConfirmationSummary. Company name is the primary heading (text-base font-semibold), period title is secondary (text-sm text-muted-foreground).
+
+[2026-04-07] | Prompt chips didn't reappear after completed submission | Changed hasActiveConversation check from `messages.some(m => m.role === "user")` to `findLastIndex` comparison — chips show again when the last user message is before the last submitted card.
+
+[2026-04-07] | Documents detected banner and Missing KPIs banner hidden on submitted cards | Both banners had `!isSubmitted &&` guard. Removed so they show on submitted cards too.
+
+[2026-04-07] | ConfirmationSummary too large in compact panel | Added `compact` prop. Compact uses text-[11px] for labels/values, text-[10px] for notes/section headers/banners, tighter padding (px-2.5, py-2, py-1 rows, space-y-2).
+
+[2026-04-07] | Drag highlight on textarea flickered — dragEnter/dragLeave fired on child elements | Use counter ref pattern: dragEnter increments, dragLeave decrements, highlight clears only when counter hits 0.
+
+[2026-04-07] | detectedDocs only populated from upload metadata, not from Claude's record_document tool calls | Added setDetectedDocs update in the record_document handler so documents identified by Claude during chat also appear in the confirmation card's detected documents banner. Fixes scanned PDFs and any file where upload auto-detection misses but Claude identifies the type.
+
+[2026-04-07] | detectedDocuments not persisted on message object — lost on component remount | Added `detectedDocuments` field to ChatMessage interface. handleConfirm stores detectedDocs on the submitted message. Submitted card reads from `msg.detectedDocuments ?? detectedDocs`.
+
+---
+
+## Chat Panel Navigation
+
+[2026-04-07] | Chat messages persisted across page navigation — old submission cards showed on unrelated pages | Added pathname-watching useEffect in ChatPanelExpanded that clears chatMessages on every route change. Uses prevPathnameRef to skip initial mount. Existing switchingCompany logic kept for same-page company tab switches.
+
+[2026-04-07] | Switching company tabs on same page (Settings) didn't reset chat — ChatInterface stayed mounted with old messages | Root cause: chatMessages state cleared but ChatInterface's internal useState wasn't reset because component stayed mounted. Fix: add `key={ctx.companyId}` to both CompanyChat renders in PersistentChatPanel so React forces a full remount when the company changes.
+
+---
+
+## Submission Tracking
+
+[2026-04-07] | New company appeared in all historical periods in Submission Tracking | Filter companies by investmentDate in getSubmissionTracking — exclude companies whose investmentDate is after the period start. Companies with no investmentDate show in all periods (backward compat).
+
+---
+
+## Company Onboarding
+
+[2026-04-07] | New company didn't appear on Onboarding tab | saveCompanyAction now sets onboardingStatus: "pending" on company creation. This makes new companies immediately visible on the Onboarding tab.
+
+[2026-04-07] | No notification when new company created | saveCompanyAction now calls createInAppNotifications with eventType "onboarding_request" after company insert, targeting all firm users.
+
+---
+
 ## Demo Files
 
 [2026-04-07] | Demo files need to be realistic and test specific platform capabilities | Brighton XLSX: 3-tab financials (tests document recognition). Apex TXT: messy informal email (tests unstructured extraction). Culinary PDF: formatted P&L (tests PDF handling). Pinnacle XLSX: 3-year historical (tests onboarding). Seed cleans demo dir on each run (rmSync). Numbers must be plausible continuations of seeded history.

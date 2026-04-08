@@ -41,9 +41,13 @@ Build a production-ready PE portfolio monitoring platform that a real PE firm co
 - [ ] **Submission Tracking UX review** — detailed review pass; fix any rough edges in the status matrix
 - [ ] **Fix variance coloring for lower-is-better KPIs** — positive variance should be red for CapEx, Churn Rate, etc. (currently always green)
 - [ ] **Blocklist mode for member access scopes** — currently only allowlist (include specific companies); need blocklist (exclude specific companies)
-- [ ] **Submission Tracking** — verify chat-submitted data surfaces correctly in the status matrix
 - [ ] **Chat submission** — handle edge case: operator uploads combined financials that covers multiple statement types (logic partially exists via `combined_financials` doc type)
 - [x] **Chat pane polish** — chips at bottom on all pages, remove company badge from header, collapse on navigation, assistant bubble full-width, tab color consistency, system prompt sort/conclusion fixes, dynamic reminder chip on Submission Tracking (live outstanding companies, confirmation flow, wired into sendRemindersAction)
+- [x] **Chat submission card fixes** — card persists after submit, company name header, compact sizing, documents/missing banners on submitted cards, prompt chips reappear after submission, drag highlight fix
+- [x] **Chat panel navigation** — messages clear on page change, company chat remounts on company switch, standard UX
+- [x] **Submission tracking date filter** — companies only shown from investment date onwards
+- [x] **Company onboarding flow** — new companies get pending status + in-app notification on creation
+- [x] **Document detection in chat** — record_document tool populates detectedDocs, persisted on message object
 
 ---
 

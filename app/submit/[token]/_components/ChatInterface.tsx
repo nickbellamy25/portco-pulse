@@ -16,6 +16,7 @@ interface ChatMessage {
   content: string;
   submittedPayload?: SubmissionPayload;  // inline confirmed submission card (read-only)
   pendingPayload?: SubmissionPayload;    // inline pending review card (interactive)
+  detectedDocuments?: string[];          // docs detected at time of submission (persisted on message)
   docDetectionLine?: string;             // server-generated doc detection line prepended to assistant message
   divider?: string;                      // section label divider — renders as a horizontal rule with centered text
 }
@@ -100,6 +101,7 @@ export function ChatInterface({
   const [contextDismissed, setContextDismissed] = useState(initialMessages.length > 0 || !!autoMessage);
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounter = useRef(0);
   const [detectedDocs, setDetectedDocs] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -217,6 +219,11 @@ export function ChatInterface({
               const without = prev.filter((r) => r.fileName !== rec.fileName);
               return [...without, { fileName: rec.fileName, filePath, documentType: rec.documentType, includedStatements: rec.includedStatements }];
             });
+            // Also update detectedDocs so the confirmation card shows detected documents
+            const docTypes = rec.includedStatements && rec.includedStatements.length > 0
+              ? rec.includedStatements
+              : rec.documentType && rec.documentType !== "financial_document" ? [rec.documentType] : [];
+            if (docTypes.length > 0) setDetectedDocs(prev => [...new Set([...prev, ...docTypes])]);
           }
 
           if (event.type === "quick_replies" && Array.isArray(event.replies)) {
@@ -323,7 +330,7 @@ export function ChatInterface({
     }
   }, [input]);
 
-  async function handleConfirm(editedPayload: SubmissionPayload) {
+  async function handleConfirm(editedPayload: SubmissionPayload, messageIndex?: number) {
     setIsSubmitting(true);
     const docRecordsToSend = pendingDocRecords;
     // Auto-detect doc records from session uploads that have a recognized type.
@@ -365,10 +372,12 @@ export function ChatInterface({
         if (sessionKey && data.id) sessionSubmissionIds.current[sessionKey] = data.id;
         setPendingPayload(null);
         setPendingDocRecords([]);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `Submitted to ${firmName}. If you have more data to submit, feel free to share it now.` },
-        ]);
+        // Atomically swap the pending card to a submitted card (no separate success message)
+        setMessages((prev) =>
+          messageIndex !== undefined
+            ? prev.map((m, j) => j === messageIndex ? { role: "assistant" as const, content: "", submittedPayload: editedPayload, detectedDocuments: detectedDocs } : m)
+            : prev
+        );
       } else {
         alert(data.message ?? "Submission failed. Please try again.");
       }
@@ -461,10 +470,12 @@ export function ChatInterface({
                 <ConfirmationSummary
                   payload={msg.submittedPayload}
                   enabledKpis={enabledKpis}
+                  companyName={companyName}
                   onConfirm={() => {}}
                   isSubmitting={false}
                   isSubmitted
-                  detectedDocuments={detectedDocs}
+                  detectedDocuments={msg.detectedDocuments ?? detectedDocs}
+                  compact={compact}
                 />
               </div>
             );
@@ -477,14 +488,12 @@ export function ChatInterface({
                 <ConfirmationSummary
                   payload={msg.pendingPayload}
                   enabledKpis={enabledKpis}
+                  companyName={companyName}
                   detectedDocuments={detectedDocs}
+                  compact={compact}
                   onConfirm={(edited) => {
-                    // Swap pending card to confirmed card in-place, then submit
-                    setMessages((prev) => prev.map((m, j) =>
-                      j === i ? { role: "assistant", content: "", submittedPayload: edited } : m
-                    ));
                     setPendingPayload(null);
-                    handleConfirm(edited);
+                    handleConfirm(edited, i);
                   }}
                   onCancel={() => {
                     setMessages((prev) => prev.filter((_, j) => j !== i));
@@ -547,7 +556,9 @@ export function ChatInterface({
         // Suppress prompt chips while autoMessage is pending OR once the user has engaged in conversation
         // (sent a message and received a response — chips are conversation starters only)
         const autoMessagePending = !!autoMessage && !autoMessageSentRef.current;
-        const hasActiveConversation = messages.some(m => m.role === "user") && messages.some(m => m.role === "assistant");
+        const lastSubmittedIndex = messages.findLastIndex(m => m.submittedPayload);
+        const lastUserIndex = messages.findLastIndex(m => m.role === "user");
+        const hasActiveConversation = lastUserIndex > lastSubmittedIndex;
         const showPromptChips = quickReplies.length === 0 && !autoMessagePending && !hasActiveConversation;
         const poolLimit = fixedChip ? 2 : 3;
         const visiblePromptChips = showPromptChips
@@ -617,14 +628,15 @@ export function ChatInterface({
         className={`${hasChips ? "" : "border-t border-border"} px-4 pt-2 pb-3`}
         onDrop={(e) => {
           e.preventDefault();
+          dragCounter.current = 0;
+          setIsDraggingOver(false);
           if (e.dataTransfer.files.length > 0 && !pendingPayload) {
             fileUploadRef.current?.handleFiles(e.dataTransfer.files);
           }
-          setIsDraggingOver(false);
         }}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
-        onDragEnter={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
-        onDragLeave={() => setIsDraggingOver(false)}
+        onDragEnter={(e) => { e.preventDefault(); dragCounter.current++; setIsDraggingOver(true); }}
+        onDragLeave={() => { dragCounter.current--; if (dragCounter.current <= 0) { dragCounter.current = 0; setIsDraggingOver(false); } }}
       >
         <div className="flex flex-col gap-2">
           {!pendingPayload && (

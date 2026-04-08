@@ -1000,9 +1000,16 @@ export function getSubmissionTracking(firmId: string, periodId: string, filters:
     .where(eq(schema.periods.id, periodId))
     .get();
 
-  const companies = applyCompanyFilters(getCompanies(firmId), filters);
+  const allCompanies = applyCompanyFilters(getCompanies(firmId), filters);
   const now = new Date().toISOString().split("T")[0];
   const isOverdueable = period?.dueDate != null && now > period.dueDate;
+
+  // Filter out companies whose investmentDate is after this period
+  const companies = allCompanies.filter((c: any) => {
+    if (!c.investmentDate) return true; // no date = show in all periods
+    if (!period) return true;
+    return c.investmentDate <= period.periodStart;
+  });
 
   const rows: SubmissionTrackingRow[] = [];
 

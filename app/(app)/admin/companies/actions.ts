@@ -6,6 +6,7 @@ import * as schema from "@/lib/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendInvitationEmail, sendKpiOverrideEmail, sendOnboardingRequestEmail } from "@/lib/server/email";
+import { createInAppNotifications } from "@/lib/server/notify";
 
 // ─── Add / Edit Company (simple dialog) ──────────────────────────────────────
 
@@ -36,7 +37,17 @@ export async function saveCompanyAction(input: SaveCompanyInput): Promise<{ id: 
       fund: fund.trim() || null,
       submissionToken: randomBytes(32).toString("base64url"),
       requiredDocs: "balance_sheet,income_statement,cash_flow_statement,investor_update",
+      onboardingStatus: "pending",
     } as any).run();
+
+    await createInAppNotifications({
+      firmId,
+      eventType: "onboarding_request",
+      title: `New company: ${name.trim()}`,
+      body: `${name.trim()} has been added and needs onboarding data.`,
+      linkUrl: "/submissions",
+    });
+
     return { id: newId };
   }
 }

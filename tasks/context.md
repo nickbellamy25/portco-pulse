@@ -430,3 +430,33 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 [2026-04-08] | Context card only had Actuals and Plan buttons — no Onboarding option | Added "Onboarding" as third DataType option. When selected, period hint changes to "List the range of historical periods, e.g. Jan 2023 – Dec 2025." Context card now shows for all modes (removed `mode === "periodic"` gate). sendContextDataType uses `join(",")` instead of old "both" logic.
 
 [2026-04-08] | Context card text was too large for the compact chat panel | Reduced to `text-xs` base, `p-3` padding, buttons `px-2.5 py-1 text-xs`, input `px-2.5 py-1 text-xs`, hint `text-[10px]`. Matches the compact chat panel style.
+
+---
+
+## Pulse AI Panel — Q&A vs Submission Mode Architecture
+
+[2026-04-09] | Analytics/Settings pages auto-set activeCompanyId from URL, forcing panel into submission mode on load | NEVER auto-set activeCompanyId from companyIdFromUrl. The panel must ALWAYS start in Q&A mode on every page. The user opts into submission mode by clicking "Submit data for a company →" chip and selecting a company. companyIdFromUrl is available for building contextual Q&A chips but must not drive activeCompanyId.
+
+[2026-04-09] | Exit button was hidden on Analytics/Settings pages because condition checked `!companyIdFromUrl` | Exit button on the "Submitting for {company}" context bar must ALWAYS be visible (condition: `activeCompanyId &&` only). handleBackToPortfolio clears activeCompanyId + companyMeta unconditionally. No dismissedContextBar workaround needed.
+
+[2026-04-09] | After dismissing context bar, panel stayed in submission mode (wrong chips, context card showing) because effectiveCompanyId was still set from URL | Removing the auto-set useEffect was the correct fix. Without it, effectiveCompanyId is only set when user explicitly selects a company. Exit clears it, returning panel to Q&A mode naturally.
+
+---
+
+## Pulse AI Panel — Chip Architecture
+
+[2026-04-09] | Prompt chips showed on submission pages (behind company picker, and after selecting company) | Chips must ONLY show in Q&A mode. When effectiveCompanyId is set (submission mode), pass empty arrays: `promptChips={effectiveCompanyId ? [] : buildChips()}` and `fixedChip={effectiveCompanyId ? undefined : fixedChip}`. The context card handles submission UX.
+
+[2026-04-09] | All pages had identical dashboard chips instead of page-specific ones | buildChips() must return different chips per page AND per context. The chip architecture is:
+- Dashboard: DASHBOARD_CHIPS (portfolio-wide Q&A)
+- Tracking: reminder chip first, then SUBMISSIONS_CHIPS
+- Analytics (company in URL): COMPANY_CHIPS_FN(urlCompanyName) — company-specific Q&A
+- Analytics (no company): DASHBOARD_CHIPS fallback
+- Company Settings (company in URL): COMPANY_SETTINGS_CHIPS_FN(urlCompanyName) — config-specific
+- Company Settings (no company): DASHBOARD_CHIPS fallback
+- Firm Settings: firmwide KPI info chips
+Use urlCompanyName (looked up from companyList via companyIdFromUrl) for contextual chips WITHOUT entering submission mode.
+
+[2026-04-09] | Multi-line chip text centered on second line — looked misaligned | Add `text-left` to all chip button classes in ChatInterface.tsx. Browser default for buttons is text-center.
+
+[2026-04-09] | SUBMISSION_CHIPS_FN was only used in submission mode which no longer shows chips | Removed SUBMISSION_CHIPS_FN entirely. Submission mode has no chips — the context card (Actuals/Plan/Onboarding) handles type selection.

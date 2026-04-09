@@ -662,7 +662,7 @@ export function ChatInterface({
                       sendMessage(chip, []);
                     }}
                     disabled={isLoading}
-                    className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+                    className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-left text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
                   >
                     {chip}
                   </button>
@@ -673,7 +673,7 @@ export function ChatInterface({
                     type="button"
                     onClick={() => { if (onChipIntercept?.(fixedChip)) return; sendMessage(fixedChip, []); }}
                     disabled={isLoading}
-                    className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
+                    className="px-2.5 py-1 rounded-full border border-border bg-background text-[11px] text-left text-foreground hover:border-primary/60 hover:bg-muted transition-colors disabled:opacity-40"
                   >
                     {fixedChip}
                   </button>

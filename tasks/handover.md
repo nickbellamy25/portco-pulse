@@ -1,8 +1,8 @@
 # Handover — PortCo Pulse
 
-## Current state (as of 2026-04-08)
+## Current state (as of 2026-04-09)
 
-The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. Latest session focused on: Pulse AI chat panel audit — fixed "Invalid token" error, added company context bar, submission type selection (periodic/plan/onboarding), and context card compact sizing.
+The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 (polish) is in progress. Latest session focused on: Pulse AI panel architecture fix — Q&A mode is now the default on all pages, Exit button works everywhere, page-specific chips restored.
 
 ---
 
@@ -487,6 +487,40 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 
 ---
 
+### Session 2026-04-09 — Pulse AI panel: Q&A-first architecture + chip fixes
+
+**Core architecture change — Q&A mode is default on all pages:**
+- Removed the `useEffect` that auto-set `activeCompanyId` from `companyIdFromUrl` on Analytics/Settings pages
+- Previously, opening the panel on Analytics or Company Settings immediately showed submission mode (context card, submission chips)
+- Now ALL pages start in Q&A mode with page-specific chips + "Submit data for a company →" fixed chip
+- User explicitly enters submission mode by clicking the fixed chip → selecting a company
+- Exit button always visible on context bar, returns to Q&A mode by clearing activeCompanyId + companyMeta
+- Removed `dismissedContextBar` workaround state (was added mid-session, then made unnecessary by the root fix)
+
+**Submission mode has no prompt chips:**
+- Chips suppressed when `effectiveCompanyId` is set: `promptChips={effectiveCompanyId ? [] : buildChips()}`
+- The context card (Actuals/Plan/Onboarding) handles submission type selection
+- Removed `SUBMISSION_CHIPS_FN` (no longer used)
+
+**Page-specific Q&A chips restored:**
+- Dashboard: "Who's behind on plan YTD?", "Which company has deteriorated most over the last 3 periods?"
+- Tracking: "Send reminders to companies with no submission this period" (first), "Which companies are at risk of missing this period's deadline?"
+- Analytics (company in URL): company-specific Q&A via COMPANY_CHIPS_FN(urlCompanyName) — "How is {name} tracking against plan?", alerts, worst KPI, headcount, margin
+- Analytics (no company): dashboard fallback chips
+- Company Settings (company in URL): "What KPIs are configured for {name}?", "What are the current alert thresholds for {name}?", "What documents are required for {name}?"
+- Company Settings (no company): dashboard fallback chips
+- Firm Settings: "How do firmwide KPI settings and overrides work?", "What are the current firmwide KPI thresholds?"
+- `urlCompanyName` resolved from companyList via companyIdFromUrl (no submission mode needed)
+
+**Chip text alignment fix:**
+- Added `text-left` to chip button classes in ChatInterface.tsx (multi-line chips were centering text)
+
+**Files changed:**
+- `components/layout/PersistentChatPanel.tsx` — core architecture change + chip pools
+- `app/submit/[token]/_components/ChatInterface.tsx` — chip text-left alignment
+
+---
+
 ## What's next — Phase 3 remaining
 
 **All changes from sessions 2026-04-07 and 2026-04-08 are committed.**
@@ -550,6 +584,9 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 - **show_last_card tool**: dedicated tool for re-showing submitted cards. Never use submit_structured_data for re-show (that creates a new draft). Client finds last submittedPayload and appends read-only copy.
 - **Canceled card state**: canceledPayload on ChatMessage. Cancel swaps (not deletes). Gray badge with XCircle. Read-only.
 - **Document detection linked to DB**: context API queries financial_documents for submitted cards. Same source as Submission Tracking. combined_financials expanded via includedStatements.
+- **Q&A-first panel architecture**: Pulse AI panel starts in Q&A mode on ALL pages. `companyIdFromUrl` is never auto-set to `activeCompanyId`. User enters submission mode explicitly via "Submit data for a company →" chip. Exit returns to Q&A.
+- **No chips in submission mode**: When `effectiveCompanyId` is set, promptChips and fixedChip are empty. Context card handles submission type selection.
+- **Page-specific Q&A chips**: Each page has its own chip pool. Analytics/Settings use `urlCompanyName` (from companyList + companyIdFromUrl) for company-specific Q&A chips without entering submission mode.
 
 ---
 

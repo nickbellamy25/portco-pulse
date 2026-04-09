@@ -153,6 +153,7 @@ function ChatPanelExpanded({
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pendingAutoMessage, setPendingAutoMessage] = useState<string | undefined>(undefined);
 
+
   // Reminder state (for Submissions page chips)
   const [outstandingData, setOutstandingData] = useState<{
     periodId: string;
@@ -198,12 +199,8 @@ function ChatPanelExpanded({
     ? (searchParams.get("company") ?? null)
     : null;
 
-  // Auto-set activeCompanyId from URL on relevant pages
-  useEffect(() => {
-    if (persona === "investor" && companyIdFromUrl) {
-      setActiveCompanyId(companyIdFromUrl);
-    }
-  }, [companyIdFromUrl, persona]);
+  // companyIdFromUrl is available for reference but does NOT auto-set activeCompanyId.
+  // The panel always starts in Q&A mode — user opts into submission via "Submit data for a company →" chip.
 
   // Match company from filename (for file drop)
   function matchCompanyFromFilename(filename: string): string | null {
@@ -236,6 +233,7 @@ function ChatPanelExpanded({
   // Determine effective company ID (operators always use their own)
   const effectiveCompanyId = operatorCompanyId ?? activeCompanyId;
 
+
   // ── Chip pools ──────────────────────────────────────────────────────────
 
   const DASHBOARD_CHIPS = [
@@ -259,38 +257,37 @@ function ChatPanelExpanded({
     `How does ${name}'s margin compare to last period?`,
   ];
 
-  const SUBMISSION_CHIPS_FN = (name: string) => [
-    `Submit this period's actuals for ${name}`,
-    `Submit annual plan data for ${name}`,
-    `Submit historical / onboarding data for ${name}`,
-  ];
 
   const isDashboard = pathname === "/dashboard";
   const isSubmissions = pathname === "/submissions";
+  const isAnalytics = pathname === "/analytics";
+  const isCompanySettings = pathname === "/admin/companies";
   const isFirmSettings = pathname === "/admin/settings" || pathname === "/settings";
 
-  function buildChips(): string[] {
-    // When company is active, show submission + Q&A chips
-    if (effectiveCompanyId && companyMeta) {
-      return [
-        ...SUBMISSION_CHIPS_FN(companyMeta.companyName),
-        ...COMPANY_CHIPS_FN(companyMeta.companyName),
-      ];
-    }
+  // Resolve company name from URL for contextual chips (without entering submission mode)
+  const urlCompanyName = companyIdFromUrl
+    ? companyList.find((c) => c.id === companyIdFromUrl)?.name ?? null
+    : null;
 
-    // Portfolio Q&A chips
+  const COMPANY_SETTINGS_CHIPS_FN = (name: string) => [
+    `What KPIs are configured for ${name}?`,
+    `What are the current alert thresholds for ${name}?`,
+    `What documents are required for ${name}?`,
+  ];
+
+  function buildChips(): string[] {
+    // Portfolio Q&A chips per page
     if (isDashboard) return DASHBOARD_CHIPS.slice(0, 2);
     if (isSubmissions) {
-      const chips = [...SUBMISSIONS_CHIPS];
-      // Dynamic reminder chips
-      if (outstandingData && outstandingData.noSubmission.length > 0) {
-        chips.push("Send reminders to companies with no submission");
-      }
-      if (outstandingData && outstandingData.partial.length > 0) {
-        chips.push("Send reminders to companies with partial submissions");
-      }
-      return chips;
+      return [
+        "Send reminders to companies with no submission this period",
+        ...SUBMISSIONS_CHIPS,
+      ];
     }
+    if (isAnalytics && urlCompanyName) return COMPANY_CHIPS_FN(urlCompanyName);
+    if (isAnalytics) return DASHBOARD_CHIPS.slice(0, 2);
+    if (isCompanySettings && urlCompanyName) return COMPANY_SETTINGS_CHIPS_FN(urlCompanyName);
+    if (isCompanySettings) return DASHBOARD_CHIPS.slice(0, 2);
     if (isFirmSettings) return ["How do firmwide KPI settings and overrides work?", "What are the current firmwide KPI thresholds?"];
     return [];
   }
@@ -319,8 +316,7 @@ function ChatPanelExpanded({
             <span className="text-[10px] text-muted-foreground shrink-0">Submitting for</span>
             <span className="text-[10px] font-semibold text-foreground truncate">{companyMeta.companyName}</span>
           </div>
-          {/* Only show Exit when company was manually selected (not auto-set from page URL) */}
-          {activeCompanyId && !companyIdFromUrl && (
+          {activeCompanyId && (
             <button
               type="button"
               onClick={handleBackToPortfolio}
@@ -369,20 +365,20 @@ function ChatPanelExpanded({
         ) : (
           <ChatInterface
             key={effectiveCompanyId ?? "portfolio"}
-            token={companyMeta?.token ?? ""}
+            token={effectiveCompanyId ? (companyMeta?.token ?? "") : ""}
             companyId={effectiveCompanyId ?? undefined}
-            companyName={companyMeta?.companyName ?? "Portfolio"}
+            companyName={effectiveCompanyId ? (companyMeta?.companyName ?? "Portfolio") : "Portfolio"}
             firmName={companyMeta?.firmName ?? "your firm"}
             initialMessages={[]}
-            enabledKpis={companyMeta?.enabledKpis ?? []}
+            enabledKpis={effectiveCompanyId ? (companyMeta?.enabledKpis ?? []) : []}
             submittedByUserId={companyMeta?.userId ?? ""}
             mode="periodic"
             chatEndpoint="/api/chat/pulse"
             compact={true}
             requiredDocs={companyMeta?.requiredDocs}
             requiredDocCadences={companyMeta?.requiredDocCadences}
-            promptChips={buildChips()}
-            fixedChip={fixedChip}
+            promptChips={effectiveCompanyId ? [] : buildChips()}
+            fixedChip={effectiveCompanyId ? undefined : fixedChip}
             autoMessage={pendingAutoMessage}
             onChipIntercept={(chip) => {
               // Handle special chips that shouldn't go to the AI
@@ -390,11 +386,7 @@ function ChatPanelExpanded({
                 setShowCompanyPicker(true);
                 return true; // intercepted
               }
-              if (chip === "Send reminders to companies with no submission" && outstandingData) {
-                // TODO: implement reminder confirmation flow
-                return true;
-              }
-              if (chip === "Send reminders to companies with partial submissions" && outstandingData) {
+              if (chip === "Send reminders to companies with no submission this period" && outstandingData) {
                 // TODO: implement reminder confirmation flow
                 return true;
               }

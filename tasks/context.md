@@ -460,3 +460,24 @@ Use urlCompanyName (looked up from companyList via companyIdFromUrl) for context
 [2026-04-09] | Multi-line chip text centered on second line — looked misaligned | Add `text-left` to all chip button classes in ChatInterface.tsx. Browser default for buttons is text-center.
 
 [2026-04-09] | SUBMISSION_CHIPS_FN was only used in submission mode which no longer shows chips | Removed SUBMISSION_CHIPS_FN entirely. Submission mode has no chips — the context card (Actuals/Plan/Onboarding) handles type selection.
+
+---
+
+## Document Type Detection
+
+[2026-04-10] | Culinary Concepts P&L PDF not detected as income_statement despite "Profit & Loss Statement" header and line items like Revenue, Gross Profit, Operating Expenses | Root cause: pdf-parse silently failed on hand-built PDFs (buildTextPdf in seed.ts), falling back to base64 vision path with NO detectDocumentTypes call. Fix: (1) added raw PDF stream text fallback (buffer.toString("latin1")) that runs detectDocumentTypes before falling back to undetected vision, (2) rewrote detection to use line-item patterns not just document titles.
+
+[2026-04-10] | Detection patterns only matched document titles ("Balance Sheet", "Income Statement") — missed documents with standard line items but non-standard titles | Replaced single-regex DOC_TYPE_PATTERNS with DOC_TYPE_STRONG + DOC_TYPE_WEAK split. Strong signals are structural line items unique to each statement type (e.g. "current assets" for BS, "cost of sales" for IS, "operating activities" for CF). Weak signals are generic terms that appear anywhere (e.g. "revenue", "EBITDA", "cash flow"). Detection requires 2+ strong OR 1 strong + 1 weak. Weak-only matches are ignored.
+
+[2026-04-10] | "gross margin" was a strong signal for income_statement — triggered false positive on informal emails mentioning "gross margin around 24.6%" | Moved "gross margin" from DOC_TYPE_STRONG to DOC_TYPE_WEAK for income_statement. Casual metric mentions in emails/memos must not trigger detection.
+
+[2026-04-10] | CSV files had no document type detection — uploaded CSVs always returned null detectedDocumentType | Added detectDocumentTypes call to extractCsv function. CSV extraction now includes detectedDocumentType and detectedIncludedStatements in the result.
+
+[2026-04-10] | Detection sample was 8000 chars — multi-page documents could have keywords past the cutoff | Increased sample size to 12000 characters.
+
+[2026-04-10] | Strong signals for each statement type — reference list:
+- **Balance sheet**: balance sheet, current assets, current liabilities, shareholders equity, retained earnings, accounts receivable, accounts payable, property & equipment, long-term debt, total assets, total liabilities, prepaid expenses, accrued liabilities, goodwill, intangible assets, deferred tax/revenue
+- **Income statement**: income statement, profit & loss, P&L, cost of sales/goods sold, gross profit, operating expenses, operating income, net income/profit/loss, SGA, total revenue, other income/expense, income before tax, tax expense, earnings before
+- **Cash flow**: cash flow statement/from, operating/investing/financing activities, beginning/ending cash, net change in cash, depreciation & amortization, capital expenditure, proceeds from, repayment of, changes in working capital
+- **Investor update**: investor/portfolio update, dear investor/partner, quarterly update/review, management commentary/discussion
+| This list must be kept in sync with DOC_TYPE_STRONG in app/api/upload/route.ts. When adding new patterns, classify as strong (unique to statement type) or weak (appears in casual context).

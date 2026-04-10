@@ -167,6 +167,20 @@ async function extractPdf(buffer: Buffer, fileName: string): Promise<UploadResul
     // fall through to OCR
   }
 
+  // Try to detect from raw PDF stream text (works for text-layer PDFs even when pdf-parse fails)
+  const rawText = buffer.toString("latin1");
+  const { primary: rawPrimary, included: rawIncluded } = detectDocumentTypes(rawText);
+  if (rawPrimary !== "financial_document") {
+    return {
+      fileName,
+      mimeType: "application/pdf",
+      pdfBase64: buffer.toString("base64"),
+      extractionMethod: "pdf_document",
+      detectedDocumentType: rawPrimary,
+      detectedIncludedStatements: rawIncluded.length > 0 ? rawIncluded : undefined,
+    };
+  }
+
   // Scanned PDF — send as native PDF document block for Claude vision
   return {
     fileName,
@@ -214,11 +228,14 @@ function extractXlsx(buffer: Buffer, fileName: string, mimeType: string): Upload
 
 function extractCsv(buffer: Buffer, fileName: string, mimeType: string): UploadResult {
   const text = buffer.toString("utf-8");
+  const { primary, included } = detectDocumentTypes(text);
   return {
     fileName,
     mimeType,
-    extractedText: `[Extracted from CSV: ${fileName}]\n\n${text}`,
+    extractedText: `[Extracted from CSV: ${fileName}, detected type: ${primary}]\n\n${text}`,
     extractionMethod: "csv",
+    detectedDocumentType: primary,
+    detectedIncludedStatements: included.length > 0 ? included : undefined,
   };
 }
 
@@ -286,25 +303,123 @@ function saveFileToDisk(buffer: Buffer, companyId: string, fileName: string): st
   }
 }
 
-const DOC_TYPE_PATTERNS: Record<string, RegExp> = {
-  balance_sheet: /balance sheet|assets|liabilities|equity/i,
-  income_statement: /income statement|profit.{0,10}loss|p&l|revenue|gross profit/i,
-  cash_flow_statement: /cash flow|operating activities|investing activities/i,
-  investor_update: /investor update|portfolio update|dear investor/i,
+/**
+ * Document detection patterns split into strong (unique to statement type) and weak (appear in multiple contexts).
+ * Strong signals are structural keywords that almost exclusively appear in that document type.
+ * Weak signals are financial terms that can appear in any context (emails, memos, other statements).
+ */
+const DOC_TYPE_STRONG: Record<string, RegExp[]> = {
+  balance_sheet: [
+    /balance\s+sheet/i,
+    /\bcurrent\s+assets\b/i,
+    /\bcurrent\s+liabilities\b/i,
+    /\bnon.?current\s+(assets|liabilities)\b/i,
+    /\bshareholders?.{0,5}equity\b/i,
+    /\bstockholders?.{0,5}equity\b/i,
+    /\bretained\s+earnings\b/i,
+    /\baccounts\s+receivable\b/i,
+    /\baccounts\s+payable\b/i,
+    /\bproperty.{0,15}equipment\b/i,
+    /\blong.?term\s+(debt|liabilities)\b/i,
+    /\btotal\s+assets\b/i,
+    /\btotal\s+liabilities\b/i,
+    /\bprepaid\s+(expenses|assets)\b/i,
+    /\baccrued\s+(expenses|liabilities)\b/i,
+    /\bgoodwill\b/i,
+    /\bintangible\s+assets\b/i,
+    /\bdeferred\s+(tax|revenue)\b/i,
+  ],
+  income_statement: [
+    /income\s+statement/i,
+    /profit\s*.{0,10}loss\s*(statement)?/i,
+    /\bp\s*&\s*l\b/i,
+    /\bcost\s+of\s+(sales|goods\s+sold|revenue)\b/i,
+    /\bgross\s+profit\b/i,
+    /\boperating\s+(expenses?|costs?)\b/i,
+    /\boperating\s+income\b/i,
+    /\bnet\s+(income|profit|loss|earnings)\b/i,
+    /\bsga\b|\bselling.{0,15}(general|admin)/i,
+    /\btotal\s+revenue\b/i,
+    /\bother\s+(income|expense)/i,
+    /\bincome\s+(before|from)\s+(tax|operations)/i,
+    /\btax\s+(expense|provision)\b/i,
+    /\bearnings\s+before\b/i,
+  ],
+  cash_flow_statement: [
+    /cash\s+flow\s+(statement|from)/i,
+    /\boperating\s+activities\b/i,
+    /\binvesting\s+activities\b/i,
+    /\bfinancing\s+activities\b/i,
+    /\b(beginning|ending)\s+(cash|balance)\b/i,
+    /\bcash\s+(and\s+cash\s+)?equivalents?\s*(,\s*)?(beginning|end)/i,
+    /\bnet\s+(increase|decrease|change)\s+in\s+cash\b/i,
+    /\bdepreciation\s+(and|&)\s+amortization\b/i,
+    /\bcapital\s+expenditure/i,
+    /\bproceeds\s+from\b/i,
+    /\brepayment\s+of\b/i,
+    /\bchanges?\s+in\s+working\s+capital\b/i,
+  ],
+  investor_update: [
+    /investor\s+update/i,
+    /portfolio\s+update/i,
+    /dear\s+(investor|partner|stakeholder)/i,
+    /quarterly\s+(update|review|report)/i,
+    /management\s+(commentary|discussion|report)/i,
+    /letter\s+to\s+(investor|shareholder|partner)/i,
+  ],
+};
+
+/** Weak signals — common financial terms that appear across many document types and informal text */
+const DOC_TYPE_WEAK: Record<string, RegExp[]> = {
+  balance_sheet: [
+    /\bassets\b/i,
+    /\bliabilities\b/i,
+    /\bequity\b/i,
+  ],
+  income_statement: [
+    /\brevenue\b/i,
+    /\bebitda\b/i,
+    /\bgross\s+margin\b/i,
+  ],
+  cash_flow_statement: [
+    /\bcash\s+flow\b/i,
+    /\bcapex\b/i,
+    /\boperating\s+cash\b/i,
+  ],
+  investor_update: [],
 };
 
 function detectDocumentTypes(text: string): { primary: string; included: string[] } {
-  const sample = text.slice(0, 8000);
-  const found = Object.entries(DOC_TYPE_PATTERNS)
-    .filter(([, re]) => re.test(sample))
-    .map(([type]) => type);
+  const sample = text.slice(0, 12000);
+  const scores: Record<string, number> = {};
 
+  for (const type of Object.keys(DOC_TYPE_STRONG)) {
+    let strong = 0;
+    let weak = 0;
+    for (const re of DOC_TYPE_STRONG[type]) {
+      if (re.test(sample)) strong++;
+    }
+    for (const re of (DOC_TYPE_WEAK[type] ?? [])) {
+      if (re.test(sample)) weak++;
+    }
+    // Require structural evidence: 2+ strong signals, OR 1 strong + 1 weak
+    // Weak-only matches are ignored (prevents emails/memos from triggering)
+    if (strong >= 2 || (strong >= 1 && weak >= 1)) {
+      scores[type] = strong + weak;
+    }
+  }
+
+  const found = Object.keys(scores);
   if (found.length === 0) return { primary: "financial_document", included: [] };
   if (found.length === 1) return { primary: found[0], included: [] };
-  return { primary: "combined_financials", included: found };
-}
 
-/** Legacy single-type string for use in PDF extracted text annotation */
-function detectDocumentType(text: string): string {
-  return detectDocumentTypes(text).primary;
+  // Multiple doc types detected — combined financials
+  const statements = found.filter((t) => t !== "investor_update");
+  if (statements.length >= 2) {
+    return { primary: "combined_financials", included: statements };
+  }
+
+  // Pick highest scoring
+  const best = found.sort((a, b) => scores[b] - scores[a])[0];
+  return { primary: best, included: [] };
 }

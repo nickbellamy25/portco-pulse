@@ -32,6 +32,14 @@ interface CompanyMeta {
   userId: string;
   requiredDocs?: string;
   requiredDocCadences?: string;
+  initialMessages?: Array<{
+    role: "user" | "assistant";
+    content: string;
+    submittedPayload?: any;
+    canceledPayload?: any;
+    detectedDocuments?: string[];
+    divider?: string;
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,7 +377,7 @@ function ChatPanelExpanded({
             companyId={effectiveCompanyId ?? undefined}
             companyName={effectiveCompanyId ? (companyMeta?.companyName ?? "Portfolio") : "Portfolio"}
             firmName={companyMeta?.firmName ?? "your firm"}
-            initialMessages={[]}
+            initialMessages={companyMeta?.initialMessages ?? []}
             enabledKpis={effectiveCompanyId ? (companyMeta?.enabledKpis ?? []) : []}
             submittedByUserId={companyMeta?.userId ?? ""}
             mode="periodic"
@@ -392,6 +400,7 @@ function ChatPanelExpanded({
               }
               return false; // not intercepted, let ChatInterface handle it
             }}
+            onEditCompanySwitch={() => {/* handled internally via editCompanyIdRef */}}
           />
         )}
       </div>

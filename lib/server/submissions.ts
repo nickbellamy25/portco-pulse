@@ -21,7 +21,7 @@ export async function writePeriodicSubmission(
   nowIso: string,
   docRecords: DocRecord[] = [],
   extractionSource: string = "chat"
-): Promise<string> {
+): Promise<{ id: string; version: number }> {
   const periodStr: string = payload.period;
   if (!periodStr) throw new Error("No period in payload");
 
@@ -139,5 +139,5 @@ export async function writePeriodicSubmission(
       .run();
   }
 
-  return subId;
+  return { id: subId, version: nextVersion };
 }

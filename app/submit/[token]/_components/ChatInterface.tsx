@@ -18,6 +18,7 @@ interface ChatMessage {
   pendingPayload?: SubmissionPayload;    // inline pending review card (interactive)
   canceledPayload?: SubmissionPayload;   // inline canceled card (read-only, gray badge)
   detectedDocuments?: string[];          // docs detected at time of submission (persisted on message)
+  submissionVersion?: number;            // version number from API response after confirm
   docDetectionLine?: string;             // server-generated doc detection line prepended to assistant message
   divider?: string;                      // section label divider — renders as a horizontal rule with centered text
 }
@@ -59,6 +60,7 @@ interface Props {
   requiredDocCadences?: string;
   onMessagesChange?: (msgs: ChatMessage[]) => void;
   onChipIntercept?: (chip: string) => boolean;
+  onEditCompanySwitch?: (companyId: string) => void;
 }
 
 export function ChatInterface({
@@ -83,6 +85,7 @@ export function ChatInterface({
   requiredDocCadences,
   onMessagesChange,
   onChipIntercept,
+  onEditCompanySwitch,
 }: Props) {
   // Restore submitted cards after the text history (they happened at the end of the prior session)
   const restoredMessages: ChatMessage[] = [
@@ -104,6 +107,11 @@ export function ChatInterface({
   const [pendingDocRecords, setPendingDocRecords] = useState<DocRecord[]>([]);
   // Maps period (YYYY-MM) or fiscal year string to submission ID, for void support
   const sessionSubmissionIds = useRef<Record<string, string>>({});
+  // CompanyId/name override from load_submission_for_edit (for Q&A mode edits)
+  const editCompanyIdRef = useRef<string | null>(null);
+  const editCompanyNameRef = useRef<string | null>(null);
+  const editEnabledKpisRef = useRef<Array<{ key: string; label: string; unit: string | null; valueType: string }>>([]);
+  const editUserIdRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contextDataTypes, setContextDataTypes] = useState<Set<DataType>>(new Set());
   const [contextPeriods, setContextPeriods] = useState(contextPeriod ?? "");
@@ -159,7 +167,7 @@ export function ChatInterface({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(companyId ? { companyId } : { token }),
+          ...((companyId || editCompanyIdRef.current) ? { companyId: companyId || editCompanyIdRef.current } : { token }),
           message: userText,
           uploads: uploads.length > 0 ? uploads : undefined,
           contextDataType: sendContextDataType ?? undefined,
@@ -264,7 +272,7 @@ export function ChatInterface({
               fetch("/api/review", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "void_submission", ...(companyId ? { companyId } : { token }), submissionId: subId, voidReason: event.reason ?? null }),
+                body: JSON.stringify({ action: "void_submission", ...((companyId || editCompanyIdRef.current) ? { companyId: companyId || editCompanyIdRef.current } : { token }), submissionId: subId, voidReason: event.reason ?? null }),
               }).then(() => {
                 // Remove the voided card from messages
                 setMessages((prev) => prev.filter((m) => {
@@ -289,6 +297,46 @@ export function ChatInterface({
                 }];
               }
               return prev;
+            });
+          }
+
+          if (event.type === "tool_call" && event.name === "load_submission_for_edit") {
+            const p = event.payload as SubmissionPayload;
+            const editVersion = (event as any).currentVersion as number;
+            // Store companyId/name for Q&A mode edits (so handleConfirm can use it)
+            if ((event as any).companyId) {
+              editCompanyIdRef.current = (event as any).companyId;
+              editCompanyNameRef.current = (event as any).companyName ?? null;
+            }
+            if (Array.isArray((event as any).enabledKpis)) {
+              editEnabledKpisRef.current = (event as any).enabledKpis;
+            }
+            if ((event as any).userId) {
+              editUserIdRef.current = (event as any).userId;
+            }
+            if (Array.isArray((event as any).detectedDocuments) && (event as any).detectedDocuments.length > 0) {
+              setDetectedDocs((event as any).detectedDocuments);
+            }
+            setMessages((prev) => {
+              // Replace the empty assistant placeholder or append
+              const last = prev[prev.length - 1];
+              if (last && last.role === "assistant" && !last.content.trim() && !last.pendingPayload && !last.submittedPayload) {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  ...last,
+                  pendingPayload: p,
+                  detectedDocuments: (event as any).detectedDocuments ?? [],
+                  submissionVersion: editVersion,
+                };
+                return updated;
+              }
+              return [...prev, {
+                role: "assistant" as const,
+                content: "",
+                pendingPayload: p,
+                detectedDocuments: (event as any).detectedDocuments ?? [],
+                submissionVersion: editVersion,
+              }];
             });
           }
 
@@ -388,12 +436,12 @@ export function ChatInterface({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "operator_confirmed",
-          ...(companyId ? { companyId } : { token }),
+          ...((companyId || editCompanyIdRef.current) ? { companyId: companyId || editCompanyIdRef.current } : { token }),
           submissionType: editedPayload.submission_type,
           period: editedPayload.period ?? null,
           fiscalYear: editedPayload.fiscal_year ?? null,
           payload: editedPayload,
-          submittedByUserId,
+          submittedByUserId: submittedByUserId || editUserIdRef.current || null,
           docRecords: docRecordsToSend,
           uploadedFiles,
           missingKpis: enabledKpis
@@ -414,7 +462,7 @@ export function ChatInterface({
         // Atomically swap the pending card to a submitted card (no separate success message)
         setMessages((prev) =>
           messageIndex !== undefined
-            ? prev.map((m, j) => j === messageIndex ? { role: "assistant" as const, content: "", submittedPayload: editedPayload, detectedDocuments: detectedDocs } : m)
+            ? prev.map((m, j) => j === messageIndex ? { role: "assistant" as const, content: "", submittedPayload: editedPayload, detectedDocuments: detectedDocs, submissionVersion: data.version } : m)
             : prev
         );
       } else {
@@ -425,6 +473,21 @@ export function ChatInterface({
       alert("Connection error. Please try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  function handleEdit(messageIndex: number) {
+    setMessages((prev) =>
+      prev.map((m, j) =>
+        j === messageIndex
+          ? { role: "assistant" as const, content: "", pendingPayload: m.submittedPayload, detectedDocuments: m.detectedDocuments }
+          : m
+      )
+    );
+    // Restore detectedDocs state from the message being edited
+    const msg = messages[messageIndex];
+    if (msg?.detectedDocuments) {
+      setDetectedDocs(msg.detectedDocuments);
     }
   }
 
@@ -509,16 +572,18 @@ export function ChatInterface({
               <div key={i} className="max-w-[90%]">
                 <ConfirmationSummary
                   payload={msg.submittedPayload}
-                  enabledKpis={enabledKpis}
-                  companyName={companyName}
-                  onConfirm={() => {}}
-                  isSubmitting={false}
+                  enabledKpis={enabledKpis.length > 0 ? enabledKpis : editEnabledKpisRef.current}
+                  companyName={editCompanyNameRef.current || companyName}
+                  onConfirm={(edited) => handleConfirm(edited, i)}
+                  isSubmitting={isSubmitting}
                   isSubmitted
                   detectedDocuments={msg.detectedDocuments ?? detectedDocs}
                   compact={compact}
                   requiredDocs={requiredDocs}
                   requiredDocCadences={requiredDocCadences}
                   submissionPeriod={msg.submittedPayload.period}
+                  onEdit={msg.submissionVersion ? () => handleEdit(i) : undefined}
+                  versionNumber={msg.submissionVersion}
                 />
               </div>
             );
@@ -530,8 +595,8 @@ export function ChatInterface({
               <div key={i} className="max-w-[90%]">
                 <ConfirmationSummary
                   payload={msg.canceledPayload}
-                  enabledKpis={enabledKpis}
-                  companyName={companyName}
+                  enabledKpis={enabledKpis.length > 0 ? enabledKpis : editEnabledKpisRef.current}
+                  companyName={editCompanyNameRef.current || companyName}
                   onConfirm={() => {}}
                   isSubmitting={false}
                   isCanceled
@@ -551,13 +616,14 @@ export function ChatInterface({
               <div key={i} className="max-w-[90%]">
                 <ConfirmationSummary
                   payload={msg.pendingPayload}
-                  enabledKpis={enabledKpis}
-                  companyName={companyName}
+                  enabledKpis={enabledKpis.length > 0 ? enabledKpis : editEnabledKpisRef.current}
+                  companyName={editCompanyNameRef.current || companyName}
                   detectedDocuments={detectedDocs}
                   compact={compact}
                   requiredDocs={requiredDocs}
                   requiredDocCadences={requiredDocCadences}
                   submissionPeriod={msg.pendingPayload.period}
+                  versionNumber={msg.submissionVersion}
                   onToggleDoc={(docKey) => {
                     setDetectedDocs((prev) =>
                       prev.includes(docKey)

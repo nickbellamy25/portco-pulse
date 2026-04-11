@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { deriveSessionKey, derivePulseSessionKey, loadHistory, saveMessage, buildAnthropicMessages, AnthropicContentBlock } from "./session";
 import { buildSystemPromptContext, assembleSystemPrompt, assembleOnboardingSystemPrompt, buildPortfolioDataSection, assemblePortfolioQASystemPrompt } from "./system-prompt";
 import { writePeriodicSubmission } from "@/lib/server/submissions";
@@ -123,6 +123,26 @@ const SHOW_LAST_CARD_TOOL: Anthropic.Tool = {
   input_schema: {
     type: "object" as const,
     properties: {},
+  },
+};
+
+const LOAD_SUBMISSION_FOR_EDIT_TOOL: Anthropic.Tool = {
+  name: "load_submission_for_edit",
+  description:
+    "Load a previously submitted periodic submission for editing. Call this when the user asks to edit, revise, or update a past submission. Returns a pre-populated editable card with the existing KPI values and associated documents. The user can then modify values and re-submit to create a new version.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      period: {
+        type: "string" as const,
+        description: "The YYYY-MM period of the submission to edit (e.g. '2026-03').",
+      },
+      company_name: {
+        type: "string" as const,
+        description: "Company name (required when no company is currently selected, e.g. in portfolio Q&A mode).",
+      },
+    },
+    required: ["period"],
   },
 };
 
@@ -298,7 +318,7 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
   // Tools differ by mode: onboarding has no void tool and uses the auto-absorb submit tool
   const tools: Anthropic.Tool[] = mode === "onboarding"
     ? [SUBMIT_STRUCTURED_DATA_ONBOARDING_TOOL, SUGGEST_QUICK_REPLIES_TOOL, RECORD_DOCUMENT_TOOL, SAVE_SUBMISSION_NOTE_TOOL]
-    : [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL];
+    : [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL, LOAD_SUBMISSION_FOR_EDIT_TOOL];
 
   // Detect submission intent: user is providing KPI data, not asking a question
   // Heuristic: 3+ distinct numbers (dollar amounts, percentages, plain numbers) or file uploads
@@ -367,8 +387,11 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
             const showLastCardBlock = finalMsg.content.find(
               (b) => b.type === "tool_use" && b.name === "show_last_card"
             ) as any;
+            const editBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "load_submission_for_edit"
+            ) as any;
 
-            if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock) {
+            if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock || editBlock) {
               saveMessage(sessionKey, company.id, "assistant", finalMsg.content, "tool_call");
             }
 
@@ -446,6 +469,92 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
 
             if (showLastCardBlock) {
               send({ type: "show_last_card" });
+            }
+
+            if (editBlock) {
+              const editPeriod = editBlock.input?.period as string;
+              if (editPeriod) {
+                const periodRow = db
+                  .select()
+                  .from(schema.periods)
+                  .where(and(
+                    eq(schema.periods.firmId, company.firmId),
+                    eq(schema.periods.periodStart, `${editPeriod}-01`)
+                  ))
+                  .get();
+
+                if (periodRow) {
+                  const submission = db
+                    .select()
+                    .from(schema.submissions)
+                    .where(and(
+                      eq(schema.submissions.companyId, company.id),
+                      eq(schema.submissions.periodId, periodRow.id),
+                      eq(schema.submissions.status, "submitted")
+                    ))
+                    .orderBy(desc(schema.submissions.version))
+                    .get();
+
+                  if (submission) {
+                    const kpiValues = db
+                      .select()
+                      .from(schema.kpiValues)
+                      .where(eq(schema.kpiValues.submissionId, submission.id))
+                      .all();
+
+                    const kpiDefs = db
+                      .select()
+                      .from(schema.kpiDefinitions)
+                      .where(and(
+                        eq(schema.kpiDefinitions.firmId, company.firmId),
+                        eq(schema.kpiDefinitions.active, true)
+                      ))
+                      .all()
+                      .filter((d: any) => d.companyId === null || d.companyId === company.id);
+
+                    const defById = new Map(kpiDefs.map((d: any) => [d.id, d]));
+                    const kpis: Record<string, { value: number | null; operator_note?: string | null }> = {};
+                    for (const v of kpiValues) {
+                      const def = defById.get(v.kpiDefinitionId);
+                      if (def) {
+                        kpis[(def as any).key] = { value: v.actualNumber ?? null, operator_note: v.note ?? null };
+                      }
+                    }
+
+                    const docs = db
+                      .select()
+                      .from(schema.financialDocuments)
+                      .where(eq(schema.financialDocuments.submissionId, submission.id))
+                      .all();
+
+                    const detectedDocTypes: string[] = [];
+                    for (const d of docs) {
+                      if (d.documentType === "combined_financials" && d.includedStatements) {
+                        detectedDocTypes.push(...d.includedStatements.split(",").filter(Boolean));
+                      } else {
+                        detectedDocTypes.push(d.documentType);
+                      }
+                    }
+
+                    send({
+                      type: "tool_call",
+                      name: "load_submission_for_edit",
+                      payload: {
+                        submission_type: "periodic" as const,
+                        period: editPeriod,
+                        kpis,
+                        overall_note: submission.note ?? null,
+                      },
+                      detectedDocuments: [...new Set(detectedDocTypes)],
+                      currentVersion: submission.version,
+                      companyId: company.id,
+                      companyName: company.name,
+                      enabledKpis: kpiDefs.map((d: any) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType })),
+                      userId,
+                    });
+                  }
+                }
+              }
             }
 
             if (noteBlock) {
@@ -532,13 +641,13 @@ export async function handlePulseChatRequest(req: NextRequest) {
     // Company mode: submission + Q&A
     const ctx = buildSystemPromptContext(company, firmName, { includePortfolioData: true });
     systemPrompt = assembleSystemPrompt(ctx);
-    tools = [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL];
+    tools = [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL, LOAD_SUBMISSION_FOR_EDIT_TOOL];
     docDetectionLine = buildDocDetectionLine(uploads, ctx.requiredDocs);
   } else {
     // Portfolio Q&A mode
     const portfolioDataJson = buildPortfolioDataSection(firmId);
     systemPrompt = assemblePortfolioQASystemPrompt(firmName, portfolioDataJson);
-    tools = [SUGGEST_QUICK_REPLIES_TOOL];
+    tools = [SUGGEST_QUICK_REPLIES_TOOL, LOAD_SUBMISSION_FOR_EDIT_TOOL];
   }
 
   const sessionKey = derivePulseSessionKey(firmId, userId, companyId);
@@ -663,8 +772,11 @@ export async function handlePulseChatRequest(req: NextRequest) {
             const showLastCardBlock = finalMsg.content.find(
               (b) => b.type === "tool_use" && b.name === "show_last_card"
             ) as any;
+            const editBlock = finalMsg.content.find(
+              (b) => b.type === "tool_use" && b.name === "load_submission_for_edit"
+            ) as any;
 
-            if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock) {
+            if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock || editBlock) {
               saveMessage(sessionKey, companyId ?? "portfolio", "assistant", finalMsg.content, "tool_call");
             }
 
@@ -697,6 +809,105 @@ export async function handlePulseChatRequest(req: NextRequest) {
 
             if (showLastCardBlock) {
               send({ type: "show_last_card" });
+            }
+
+            if (editBlock) {
+              const editPeriod = editBlock.input?.period as string;
+              const editCompanyName = editBlock.input?.company_name as string | undefined;
+
+              // Resolve company: use existing company context, or look up by name from tool input
+              let editCompany = company;
+              if (!editCompany && editCompanyName) {
+                const allCompanies = db.select().from(schema.companies)
+                  .where(eq(schema.companies.firmId, firmId))
+                  .all();
+                // Fuzzy match: case-insensitive substring
+                const lower = editCompanyName.toLowerCase();
+                editCompany = allCompanies.find((c: any) => c.name.toLowerCase().includes(lower)) ?? null;
+              }
+
+              if (editPeriod && editCompany) {
+                const periodRow = db
+                  .select()
+                  .from(schema.periods)
+                  .where(and(
+                    eq(schema.periods.firmId, editCompany.firmId),
+                    eq(schema.periods.periodStart, `${editPeriod}-01`)
+                  ))
+                  .get();
+
+                if (periodRow) {
+                  const submission = db
+                    .select()
+                    .from(schema.submissions)
+                    .where(and(
+                      eq(schema.submissions.companyId, editCompany.id),
+                      eq(schema.submissions.periodId, periodRow.id),
+                      eq(schema.submissions.status, "submitted")
+                    ))
+                    .orderBy(desc(schema.submissions.version))
+                    .get();
+
+                  if (submission) {
+                    const kpiValues = db
+                      .select()
+                      .from(schema.kpiValues)
+                      .where(eq(schema.kpiValues.submissionId, submission.id))
+                      .all();
+
+                    const kpiDefs = db
+                      .select()
+                      .from(schema.kpiDefinitions)
+                      .where(and(
+                        eq(schema.kpiDefinitions.firmId, editCompany.firmId),
+                        eq(schema.kpiDefinitions.active, true)
+                      ))
+                      .all()
+                      .filter((d: any) => d.companyId === null || d.companyId === editCompany!.id);
+
+                    const defById = new Map(kpiDefs.map((d: any) => [d.id, d]));
+                    const kpis: Record<string, { value: number | null; operator_note?: string | null }> = {};
+                    for (const v of kpiValues) {
+                      const def = defById.get(v.kpiDefinitionId);
+                      if (def) {
+                        kpis[(def as any).key] = { value: v.actualNumber ?? null, operator_note: v.note ?? null };
+                      }
+                    }
+
+                    const docs = db
+                      .select()
+                      .from(schema.financialDocuments)
+                      .where(eq(schema.financialDocuments.submissionId, submission.id))
+                      .all();
+
+                    const detectedDocTypes: string[] = [];
+                    for (const d of docs) {
+                      if (d.documentType === "combined_financials" && d.includedStatements) {
+                        detectedDocTypes.push(...d.includedStatements.split(",").filter(Boolean));
+                      } else {
+                        detectedDocTypes.push(d.documentType);
+                      }
+                    }
+
+                    send({
+                      type: "tool_call",
+                      name: "load_submission_for_edit",
+                      payload: {
+                        submission_type: "periodic" as const,
+                        period: editPeriod,
+                        kpis,
+                        overall_note: submission.note ?? null,
+                      },
+                      detectedDocuments: [...new Set(detectedDocTypes)],
+                      currentVersion: submission.version,
+                      companyId: editCompany.id,
+                      companyName: editCompany.name,
+                      enabledKpis: kpiDefs.map((d: any) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType })),
+                      userId,
+                    });
+                  }
+                }
+              }
             }
 
             if (noteBlock && company) {

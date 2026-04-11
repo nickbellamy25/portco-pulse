@@ -562,6 +562,54 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 
 ---
 
+### Session 2026-04-11 — Edit & resubmit KPI forms + version history
+
+**Edit submitted forms (ConfirmationSummary + ChatInterface):**
+- "Edit Submission" button on submitted cards (Pencil icon, outline style)
+- Version badge (blue "v2", "v3") on submitted cards when version > 1
+- "Editing v{N}" amber badge on draft cards loaded from existing submissions
+- `handleEdit(messageIndex)` swaps submittedPayload→pendingPayload for in-place editing
+- handleConfirm stores version from API response on the message
+
+**Chat-driven edit flow (load_submission_for_edit tool):**
+- New Anthropic tool: `load_submission_for_edit` with `period` + optional `company_name` params
+- Server handler queries latest submission for company+period, loads KPI values + documents
+- Sends SSE event with payload, detectedDocuments, currentVersion, companyId, companyName, enabledKpis, userId
+- Works from BOTH company mode (period only) and Q&A mode (period + company_name fuzzy match)
+- Client handler in ChatInterface renders editable card pre-populated from DB
+- editCompanyIdRef + editCompanyNameRef + editEnabledKpisRef + editUserIdRef handle Q&A mode context
+- No panel mode switch needed — refs provide all context for confirm flow
+- System prompt instructs Claude to call tool immediately (no confirmation, no narration)
+
+**Version tracking in API:**
+- `writePeriodicSubmission()` returns `{ id, version }` instead of just `id`
+- `/api/review` returns `version` in response JSON
+- `isResubmission` flag now correctly set to `version > 1` in email notification
+
+**Message persistence fix:**
+- PersistentChatPanel now passes `companyMeta.initialMessages` to ChatInterface (was hardcoded `[]`)
+- Submitted cards persist across page refresh (reconstructed from DB chat history)
+
+**Submission Tracking version badge:**
+- Blue "v{N}" badge shown in Status column when version > 1
+
+**System prompt updates:**
+- EDITING PRIOR SUBMISSIONS section in assembleSystemPrompt with forceful tool-calling instructions
+- Portfolio Q&A prompt updated with editing knowledge + instruction to use tool directly from Q&A mode
+- PLATFORM KNOWLEDGE bullets updated in both prompts
+
+**Files changed:**
+- `lib/server/submissions.ts` — return type change
+- `app/api/review/route.ts` — version in response, isResubmission fix
+- `app/submit/[token]/_components/ConfirmationSummary.tsx` — Edit button, version badge, editing badge
+- `app/submit/[token]/_components/ChatInterface.tsx` — handleEdit, version tracking, edit event handler, company/KPI/userId refs
+- `components/layout/PersistentChatPanel.tsx` — initialMessages pass-through
+- `lib/chat/handler.ts` — load_submission_for_edit tool + handlers in both chat functions
+- `lib/chat/system-prompt.ts` — editing instructions + knowledge
+- `app/(app)/submissions/client.tsx` — version badge
+
+---
+
 ## What's next — Phase 3 remaining
 
 **All changes from sessions 2026-04-07 and 2026-04-08 are committed.**

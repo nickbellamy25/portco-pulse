@@ -295,6 +295,24 @@ Project-specific rules and lessons. Format: `[YYYY-MM-DD] | what went wrong | ru
 
 [2026-04-07] | Chat messages persisted across page navigation — old submission cards showed on unrelated pages | Added pathname-watching useEffect in ChatPanelExpanded that clears chatMessages on every route change. Uses prevPathnameRef to skip initial mount. Existing switchingCompany logic kept for same-page company tab switches.
 
+---
+
+## Edit & Resubmit Submissions
+
+[2026-04-11] | PersistentChatPanel passed `initialMessages={[]}` instead of `companyMeta.initialMessages` — submitted cards disappeared on page refresh | Always pass `companyMeta?.initialMessages ?? []` to ChatInterface in PersistentChatPanel. The context API already reconstructs full chat history from DB — it just wasn't being used.
+
+[2026-04-11] | System prompt told Claude to describe what `load_submission_for_edit` tool does instead of calling it — Claude said "In the live platform, this would open..." | System prompt tool instructions must be forceful: "IMMEDIATELY call... Do NOT describe... Do NOT say 'this would open...' — CALL IT." Claude defaults to narrating tool behavior unless explicitly told not to.
+
+[2026-04-11] | `load_submission_for_edit` tool only available in company-mode tools array — users in Q&A mode couldn't edit submissions | Tool must be in BOTH company-mode and Q&A-mode tools arrays. Add optional `company_name` parameter for Q&A mode. Handler does fuzzy company lookup by name when no company is selected.
+
+[2026-04-11] | Edit card in Q&A mode showed no KPIs — `enabledKpis` prop was `[]` in Q&A mode | The `load_submission_for_edit` SSE event must include `enabledKpis` (mapped from kpiDefs). ChatInterface stores in `editEnabledKpisRef` and uses as fallback when prop is empty.
+
+[2026-04-11] | FOREIGN KEY constraint failed when submitting edited form from Q&A mode — `submittedByUserId` was empty string | The edit SSE event must include `userId`. ChatInterface stores in `editUserIdRef` and uses as fallback: `submittedByUserId || editUserIdRef.current || null`. Never send empty string as FK value.
+
+[2026-04-11] | Tried to switch panel to company mode via `setActiveCompanyId` when edit card loaded — caused full remount (loading spinner) which destroyed the edit card | Never trigger `setActiveCompanyId` from a tool event that also renders a card. Use refs (`editCompanyIdRef`, `editCompanyNameRef`, `editEnabledKpisRef`, `editUserIdRef`) to provide company context without remounting. The card renders in Q&A mode but has full context via refs.
+
+[2026-04-11] | `writePeriodicSubmission` returned just `string` (id) — callers couldn't know the version number | Return `{ id: string, version: number }`. `/api/review` passes version in JSON response. ChatInterface stores on message for version badge display. `isResubmission` flag in email notification uses `version > 1`.
+
 [2026-04-07] | Switching company tabs on same page (Settings) didn't reset chat — ChatInterface stayed mounted with old messages | Root cause: chatMessages state cleared but ChatInterface's internal useState wasn't reset because component stayed mounted. Fix: add `key={ctx.companyId}` to both CompanyChat renders in PersistentChatPanel so React forces a full remount when the company changes.
 
 ---

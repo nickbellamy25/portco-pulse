@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (submissionType === "periodic") {
-      const id = await writePeriodicSubmission(company, payload, submittedByUserId ?? null, nowIso, mergedDocRecords);
+      const { id, version } = await writePeriodicSubmission(company, payload, submittedByUserId ?? null, nowIso, mergedDocRecords);
 
       // Send submission notification to firm recipients
       try {
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
             companyName: company.name,
             period: payload.period ?? "",
             submissionTime: nowIso,
-            isResubmission: false,
+            isResubmission: version > 1,
             settings: emailConfig,
             firmId: company.firmId,
             companyId: company.id,
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       revalidatePath("/submissions");
       revalidatePath("/dashboard");
       revalidatePath("/analytics");
-      return NextResponse.json({ id });
+      return NextResponse.json({ id, version });
     } else {
       const id = await writePlanSubmission(company, payload, nowIso);
       revalidatePath("/submissions");

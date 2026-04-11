@@ -449,7 +449,14 @@ export function SubmissionTrackingClient({
                     <p className="font-medium">{row.companyName}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <CompletenessCell row={row} periodMonth={periodMonth} />
+                    <div className="flex items-center gap-1.5">
+                      <CompletenessCell row={row} periodMonth={periodMonth} />
+                      {row.version != null && row.version > 1 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-medium">
+                          v{row.version}
+                        </span>
+                      )}
+                    </div>
                     {periodDueDate && row.status !== "submitted" && (
                       <p className={`flex items-center gap-1 text-xs mt-1 ${isPeriodOverdue ? "text-red-500" : "text-muted-foreground"}`}>
                         <Calendar

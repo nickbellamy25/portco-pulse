@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Pencil, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface KpiEntry {
@@ -32,6 +32,8 @@ interface Props {
   submissionPeriod?: string;
   compact?: boolean;
   onToggleDoc?: (docKey: string) => void;
+  onEdit?: () => void;
+  versionNumber?: number;
 }
 
 const ALL_DOC_KEYS = ["balance_sheet", "income_statement", "cash_flow_statement", "investor_update"] as const;
@@ -53,7 +55,7 @@ const KPI_SECTIONS: Record<string, string[]> = {
   Operations: ["customer_acquisition_cost", "headcount", "churn_rate", "inventory_days", "nps_score", "employee_turnover_rate"],
 };
 
-export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, isCanceled = false, detectedDocuments, requiredDocs, requiredDocCadences, submissionPeriod, compact = false, onToggleDoc }: Props) {
+export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, isCanceled = false, detectedDocuments, requiredDocs, requiredDocCadences, submissionPeriod, compact = false, onToggleDoc, onEdit, versionNumber }: Props) {
   const [editableKpis, setEditableKpis] = useState<Record<string, KpiEntry>>(() => ({ ...payload.kpis }));
   const [overallNote, setOverallNote] = useState(payload.overall_note ?? "");
   const [editingCell, setEditingCell] = useState<{ key: string; field: "value" | "note" } | null>(null);
@@ -200,10 +202,22 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
             </p>
           )}
         </div>
-        {isSubmitted && (
-          <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 ${noteSize} font-medium`}>
-            <CheckCircle2 className={`${compact ? "h-2.5 w-2.5" : "h-3 w-3"}`} /> Submitted
+        {!isSubmitted && !isCanceled && versionNumber && versionNumber > 0 && (
+          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200 ${noteSize} font-medium`}>
+            Editing v{versionNumber}
           </span>
+        )}
+        {isSubmitted && (
+          <div className="flex items-center gap-1.5">
+            {versionNumber && versionNumber > 1 && (
+              <span className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 ${noteSize} font-medium`}>
+                v{versionNumber}
+              </span>
+            )}
+            <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 ${noteSize} font-medium`}>
+              <CheckCircle2 className={`${compact ? "h-2.5 w-2.5" : "h-3 w-3"}`} /> Submitted
+            </span>
+          </div>
         )}
         {isCanceled && (
           <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 ${noteSize} font-medium`}>
@@ -307,6 +321,15 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
             ) : (
               <><CheckCircle2 className="h-4 w-4 mr-2" />Submit</>
             )}
+          </Button>
+        </div>
+      )}
+
+      {isSubmitted && onEdit && (
+        <div className={`${px} ${py} border-t border-border`}>
+          <Button variant="outline" onClick={onEdit} className="w-full" size={compact ? "sm" : "default"}>
+            <Pencil className="h-3.5 w-3.5 mr-2" />
+            Edit Submission
           </Button>
         </div>
       )}

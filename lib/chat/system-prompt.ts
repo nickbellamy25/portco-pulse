@@ -394,6 +394,11 @@ DETERMINING THE PERIOD
 - If different KPIs are reported at different granularities within the same document (e.g. Revenue monthly but Headcount only quarterly), submit at the finest granularity available for each period and include whichever KPIs have data for that period. Set KPIs without data for that period to null.
 - If a document covers multiple years, process ALL years. Do not stop after one.
 - If you cannot determine the period with confidence, ask the operator once before submitting.
+- Set periodLabel for non-monthly data:
+  - Annual data: periodLabel = "FY{YYYY}" (e.g. "FY2025")
+  - Quarterly data: periodLabel = "Q{N} {YYYY}" (e.g. "Q1 2024")
+  - Semi-annual data: periodLabel = "H{N} {YYYY}" (e.g. "H1 2024")
+  - Monthly data: omit periodLabel (default formatting handles it)
 
 DEFAULT BEHAVIOR
 All data found in uploaded documents will be processed and ingested unless the operator specifies otherwise. This is the opposite of periodic submissions where only explicitly stated periods are collected. If the operator uploads a 3-year annual report, extract and submit data for all 3 years.
@@ -406,6 +411,7 @@ Always use periodic submission format:
 {
   "submission_type": "periodic",
   "period": "YYYY-MM",
+  "periodLabel": "<human-readable label, e.g. 'FY2025', 'Q1 2024', 'H1 2024'. Omit for monthly data>",
   "kpis": {
     "<kpi_key>": { "value": <number | null>, "operator_note": "<string | null>" }
   },

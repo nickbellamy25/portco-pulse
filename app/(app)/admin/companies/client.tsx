@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Copy, Plus, ExternalLink, Trash2, X, AlertTriangle, Building2, Pencil, Check, ChevronDown, CheckCircle2, Send } from "lucide-react";
+import { Copy, Plus, ExternalLink, Trash2, X, AlertTriangle, Building2, Pencil, Check, ChevronDown, CheckCircle2 } from "lucide-react";
 import { SettingsNav } from "@/components/layout/settings-nav";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +43,6 @@ import {
   deleteKpiAlertOverrideAction,
   upsertKpiRagOverrideAction,
   deleteKpiRagOverrideAction,
-  sendOnboardingRequestAction,
 } from "./actions";
 
 const TIMEZONES = [
@@ -1580,8 +1579,6 @@ export function CompaniesClient({
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleting, setDeleting] = useState(false);
 
-  // Onboarding request
-  const [sendingOnboarding, setSendingOnboarding] = useState(false);
 
   const selectedCompany = companies.find((c) => c.id === selectedCompanyId) ?? null;
 
@@ -1651,19 +1648,6 @@ export function CompaniesClient({
     toast.success(`Chat link copied for ${c.name}`);
   }
 
-  async function handleSendOnboardingRequest() {
-    if (!selectedCompany) return;
-    setSendingOnboarding(true);
-    try {
-      await sendOnboardingRequestAction(selectedCompany.id, firmId);
-      toast.success("Onboarding request sent.");
-      router.refresh();
-    } catch {
-      toast.error("Failed to send onboarding request.");
-    } finally {
-      setSendingOnboarding(false);
-    }
-  }
 
   return (
     <div className="p-8">
@@ -1829,36 +1813,6 @@ export function CompaniesClient({
               </TabsList>
 
               <TabsContent value="info" className="mt-0">
-                {/* Onboarding banner — only shown while pending or in_progress; hidden once complete */}
-                {!isOperator && (() => {
-                  const obStatus = (selectedCompany as any).onboardingStatus as string | null;
-                  if (obStatus !== "pending" && obStatus !== "in_progress") return null;
-                  const operatorUsers = allUsers.filter((u) => u.companyId === selectedCompany.id);
-
-                  const sentAt = (selectedCompany as any).onboardingRequestSentAt as string | null;
-                  const sentDate = sentAt
-                    ? new Date(sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                    : null;
-                  const count = operatorUsers.length;
-                  return (
-                    <div className="flex items-start gap-3 mx-6 mt-6 p-4 rounded-lg border border-blue-200 bg-blue-50/60">
-                      <Check className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-blue-800">
-                          Onboarding request sent{sentDate ? ` ${sentDate}` : ""} to {count} operator{count !== 1 ? "s" : ""}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Button size="sm" variant="outline" onClick={handleSendOnboardingRequest} disabled={sendingOnboarding}>
-                          {sendingOnboarding ? "Sending..." : "Remind"}
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => setActiveTab("users")}>
-                          Add operators
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })()}
                 <CompanyInfoSection
                   company={selectedCompany}
                   onSaved={() => router.refresh()}

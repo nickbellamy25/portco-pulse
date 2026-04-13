@@ -116,7 +116,7 @@ export function ChatInterface({
   const editUserIdRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contextDataTypes, setContextDataTypes] = useState<Set<DataType>>(new Set());
-  const [contextPeriods, setContextPeriods] = useState(contextPeriod ?? "");
+  const [contextPeriods, setContextPeriods] = useState("");
   const [contextDismissed, setContextDismissed] = useState(initialMessages.length > 0 || !!autoMessage);
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -260,7 +260,7 @@ export function ChatInterface({
           }
 
           if (event.type === "onboarding_absorbed") {
-            const periodLabel = formatPeriodLabel(event.period ?? "");
+            const periodLabel = event.periodLabel || formatPeriodLabel(event.period ?? "");
             const n = event.kpiCount ?? 0;
             const label = `Saved ${n} KPI${n !== 1 ? "s" : ""} for ${periodLabel}.`;
             setMessages((prev) => [
@@ -522,11 +522,17 @@ export function ChatInterface({
                     <button
                       key={value}
                       type="button"
-                      onClick={() => setContextDataTypes((prev) => {
-                        const next = new Set(prev);
-                        next.has(value) ? next.delete(value) : next.add(value);
-                        return next;
-                      })}
+                      onClick={() => {
+                        setContextDataTypes((prev) => {
+                          const next = new Set(prev);
+                          next.has(value) ? next.delete(value) : next.add(value);
+                          return next;
+                        });
+                        // Clear pre-filled period when switching to onboarding (period is irrelevant)
+                        if (value === "onboarding") {
+                          setContextPeriods("");
+                        }
+                      }}
                       className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors ${
                         selected
                           ? "bg-primary text-primary-foreground border-primary"

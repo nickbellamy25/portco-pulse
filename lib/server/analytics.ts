@@ -893,6 +893,7 @@ export function getLatestSubmissionRagCount(firmId: string, companyIds: string[]
 
 export type PortfolioChartData = {
   kpiOptions: Array<{ key: string; label: string; unit: string | null }>;
+  snapshotLabel: string; // e.g. "Mar 2026" or "Latest Submission"
   companies: Array<{
     id: string;
     name: string;
@@ -907,7 +908,7 @@ export type PortfolioChartData = {
 };
 
 export function getPortfolioChartData(firmId: string, companyIds: string[]): PortfolioChartData {
-  const empty: PortfolioChartData = { kpiOptions: [], companies: [], trendPeriods: [] };
+  const empty: PortfolioChartData = { kpiOptions: [], snapshotLabel: "Latest Submission", companies: [], trendPeriods: [] };
   if (!companyIds.length) return empty;
 
   const allCompanies = db
@@ -922,6 +923,7 @@ export function getPortfolioChartData(firmId: string, companyIds: string[]): Por
   if (!allPeriods.length) {
     return {
       ...empty,
+      snapshotLabel: "Latest Submission",
       companies: allCompanies.map((c) => ({ id: c.id, name: c.name, latestValues: {}, latestPeriodLabel: null })),
     };
   }
@@ -984,28 +986,45 @@ export function getPortfolioChartData(firmId: string, companyIds: string[]): Por
     subLookup.set(`${s.companyId}:${s.periodId}`, s);
   }
 
-  // Snapshot: per-company latest period with a submission
-  const periodsDesc = [...allPeriods].reverse();
-  const companies = allCompanies.map((c) => {
-    const latestP = periodsDesc.find((p) => subLookup.has(`${c.id}:${p.id}`)) ?? null;
-    const sub = latestP ? subLookup.get(`${c.id}:${latestP.id}`) : undefined;
-    const kpis = sub ? (subKpiMap.get(sub.id) ?? {}) : {};
+  // Exclude companies still being onboarded — they only have historical/annual data
+  // and shouldn't be compared against companies with monthly submissions.
+  const chartCompanies = allCompanies.filter(
+    (c) => c.onboardingStatus !== "pending" && c.onboardingStatus !== "in_progress"
+  );
+
+  const snapshotLabel = "Latest Submission";
+
+  // For each company, find their latest submission
+  const companies = chartCompanies.map((c) => {
+    let latestSub: (typeof submissions)[0] | undefined;
+    let latestPeriod: (typeof allPeriods)[0] | undefined;
+    for (let i = allPeriods.length - 1; i >= 0; i--) {
+      const sub = subLookup.get(`${c.id}:${allPeriods[i].id}`);
+      if (sub) {
+        latestSub = sub;
+        latestPeriod = allPeriods[i];
+        break;
+      }
+    }
+    const kpis = latestSub ? (subKpiMap.get(latestSub.id) ?? {}) : {};
     const latestValues: Record<string, number | null> = {};
     for (const kpiDef of kpiDefs) {
       latestValues[kpiDef.key] = kpis[kpiDef.key] ?? null;
     }
-    const latestPeriodLabel = latestP
-      ? new Date(latestP.periodStart + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    const latestPeriodLabel = latestPeriod
+      ? new Date(latestPeriod.periodStart + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
       : null;
     return { id: c.id, name: c.name, latestValues, latestPeriodLabel };
   });
 
-  // Trend: last 12 months, per KPI per company
+  // Trend: last 12 months, per KPI per company (only chartCompanies)
+  const filteredCompanyIds = new Set(chartCompanies.map((c) => c.id));
   const trendPeriods = allPeriods.slice(-12).map((p) => {
     const byKpi: Record<string, Record<string, number | null>> = {};
     for (const kpiDef of kpiDefs) {
       byKpi[kpiDef.key] = {};
       for (const c of allCompanies) {
+        if (!filteredCompanyIds.has(c.id)) continue;
         const sub = subLookup.get(`${c.id}:${p.id}`);
         const kpis = sub ? (subKpiMap.get(sub.id) ?? {}) : {};
         byKpi[kpiDef.key][c.id] = kpis[kpiDef.key] ?? null;
@@ -1019,7 +1038,7 @@ export function getPortfolioChartData(firmId: string, companyIds: string[]): Por
     };
   });
 
-  return { kpiOptions, companies, trendPeriods };
+  return { kpiOptions, snapshotLabel, companies, trendPeriods };
 }
 
 // ─── SUBMISSION TRACKING ─────────────────────────────────────────────────────

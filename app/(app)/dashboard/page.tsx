@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getPortfolioDashboardData, getCompanyFilterOptions, getPortfolioChartData, getAccessibleCompanyIds, getPortfolioPlanSummary, getLatestSubmissionRagCount } from "@/lib/server/analytics";
 import Link from "next/link";
-import { Building2, AlertTriangle, Clock, Calendar } from "lucide-react";
+import { Building2, AlertTriangle, Clock } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ExportDataButton } from "@/components/dashboard/export-button";
 import { FilterBarUrl } from "@/components/filters/filter-bar-url";
@@ -36,6 +36,7 @@ export default async function DashboardPage({
 
   const data = getPortfolioDashboardData(user.firmId, filters);
   const filterOptions = getCompanyFilterOptions(user.firmId);
+
   const portfolioChartData = getPortfolioChartData(user.firmId, data.companies.map((c) => c.id));
   const planSummary = getPortfolioPlanSummary(user.firmId, data.companies.map((c) => c.id));
   const latestRag = getLatestSubmissionRagCount(user.firmId, data.companies.map((c) => c.id));
@@ -48,25 +49,10 @@ export default async function DashboardPage({
         <ExportDataButton firmId={user.firmId} />
       </div>
 
-      {/* Filter bar + current period */}
-      {(() => {
-        const periodDate = data.openPeriod ? new Date(`${data.openPeriod.periodStart}T12:00:00`) : null;
-        const periodLabel = periodDate
-          ? periodDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })
-          : null;
-        return (
-          <div className="flex items-center justify-between gap-4 mb-6">
-            <Suspense fallback={null}><FilterBarUrl funds={filterOptions.funds} industries={filterOptions.industries} /></Suspense>
-            {periodLabel && (
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
-                <Calendar className="h-3.5 w-3.5" />
-                <span className="font-medium text-foreground">Current Period:</span>
-                <span>{periodLabel}</span>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {/* Filter bar */}
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <Suspense fallback={null}><FilterBarUrl funds={filterOptions.funds} industries={filterOptions.industries} /></Suspense>
+      </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">

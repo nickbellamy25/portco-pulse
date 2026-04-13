@@ -26,6 +26,7 @@ interface Props {
   isSubmitting: boolean;
   isSubmitted?: boolean;
   isCanceled?: boolean;
+  periodLabel?: string;
   detectedDocuments?: string[];
   requiredDocs?: string;
   requiredDocCadences?: string;
@@ -55,7 +56,7 @@ const KPI_SECTIONS: Record<string, string[]> = {
   Operations: ["customer_acquisition_cost", "headcount", "churn_rate", "inventory_days", "nps_score", "employee_turnover_rate"],
 };
 
-export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, isCanceled = false, detectedDocuments, requiredDocs, requiredDocCadences, submissionPeriod, compact = false, onToggleDoc, onEdit, versionNumber }: Props) {
+export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfirm, onCancel, isSubmitting, isSubmitted = false, isCanceled = false, periodLabel: periodLabelProp, detectedDocuments, requiredDocs, requiredDocCadences, submissionPeriod, compact = false, onToggleDoc, onEdit, versionNumber }: Props) {
   const [editableKpis, setEditableKpis] = useState<Record<string, KpiEntry>>(() => ({ ...payload.kpis }));
   const [overallNote, setOverallNote] = useState(payload.overall_note ?? "");
   const [editingCell, setEditingCell] = useState<{ key: string; field: "value" | "note" } | null>(null);
@@ -193,7 +194,7 @@ export function ConfirmationSummary({ payload, enabledKpis, companyName, onConfi
           )}
           <p className={`${compact ? "text-[10px]" : "text-sm"} text-muted-foreground ${companyName ? "" : `font-semibold ${compact ? "text-[11px]" : "text-base"} text-foreground`}`}>
             {payload.submission_type === "periodic"
-              ? `${formatPeriodLabel(payload.period ?? "")} Submission`
+              ? `${periodLabelProp || formatPeriodLabel(payload.period ?? "")} Submission`
               : `FY ${payload.fiscal_year} Annual Plan`}
           </p>
           {!isSubmitted && !isCanceled && (

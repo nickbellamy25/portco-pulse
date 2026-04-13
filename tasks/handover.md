@@ -649,6 +649,72 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 - `app/api/companies/route.ts` — added onboardingStatus to response
 - `app/api/companies/onboarding-remind/route.ts` — new endpoint
 
+### Session 2026-04-13 (continued) — Chat panel fixes, onboarding overhaul, dashboard chart filter
+
+**Chat panel company list refresh:**
+- Company list in Pulse AI "Select a company" dropdown was stale — fetched once on mount, never refreshed
+- Added `chatOpen` to the useEffect dependency array in `PersistentChatPanel.tsx` — refetches `/api/companies` every time panel opens
+- Newly added companies (e.g., Pinnacle Retail) now appear without hard refresh
+
+**Onboarding banner removed from Company Settings:**
+- Removed blue "Onboarding request sent to X operators" banner from Company Info tab
+- Removed: banner JSX, `sendingOnboarding` state, `handleSendOnboardingRequest` handler, `sendOnboardingRequestAction` server action from `client.tsx` and `actions.ts`
+- Onboarding reminders now managed exclusively via Pulse AI chat chips (existing chips on Analytics/Company Settings pages)
+- `/api/companies/onboarding-remind` endpoint preserved (used by chat chip intercept)
+
+**Onboarding context card period fix:**
+- Period input now clears when "Onboarding" data type is selected (was autofilling with current period)
+- Changed `contextPeriods` state initialization from `contextPeriod ?? ""` to `""` — empty for all modes
+- `contextPeriod` still used as placeholder hint text
+
+**Onboarding multi-year extraction (agentic loop in handler.ts):**
+- `handleChatRequest`: Added while loop that continues when `stop_reason === "tool_use"` in onboarding mode
+- After absorbing each period, builds tool_result messages and continues conversation with Claude
+- Claude gets confirmation ("Saved N KPIs for FY20XX. Continue with next period.") and processes remaining years
+- Capped at 10 iterations for safety
+- `SUBMIT_STRUCTURED_DATA_ONBOARDING_TOOL` description updated to mention multi-period behavior
+- Periodic mode completely unchanged (loop exits after first iteration)
+
+**Firm-side onboarding support (agentic loop in pulse handler):**
+- `handlePulseChatRequest` was hardcoded to periodic mode — firm users selecting "Onboarding" still went through periodic endpoint
+- Added `isOnboarding` detection from `contextDataType`
+- When `isOnboarding && company`: uses `assembleOnboardingSystemPrompt(ctx)`, onboarding tool set, and full agentic while loop (same pattern as operator handler)
+- Auto-absorbs onboarding data, sends `onboarding_absorbed` events to client
+- Opening question changed to onboarding-specific message
+- Tool choice forcing disabled for onboarding mode
+- Periodic-only events (record_document, void_session, load_for_edit) gated with `!isOnboarding`
+
+**Period labels for non-monthly data:**
+- Added `periodLabel` field to submission payload (optional)
+- System prompt instructs Claude: annual → "FY2025", quarterly → "Q1 2024", semi-annual → "H1 2024", monthly → omit
+- `onboarding_absorbed` event includes `periodLabel` from payload
+- ChatInterface `onboarding_absorbed` handler uses `event.periodLabel || formatPeriodLabel(event.period)`
+- ConfirmationSummary accepts optional `periodLabel` prop, uses it when present for card header
+
+**Dashboard chart filter — exclude onboarding-only companies:**
+- `getPortfolioChartData` now filters out companies with `onboardingStatus = "pending"` or `"in_progress"`
+- Prevents annual onboarding data (e.g., Pinnacle $21.5M annual revenue) from being compared against monthly data
+- Chart title changed to "Portfolio Performance — Periodic Submissions" (covers both bar and trend charts)
+- Snapshot sub-heading remains "Latest Submission" (no period date — varies by company)
+- Removed the old "Latest Submission · APR 2026" format (period label was misleading)
+
+**Confirmed (no code changes):**
+- Firm users can submit onboarding data without operators via Pulse AI panel (select company → Onboarding mode)
+- Onboarded data correctly flows to Analytics page (no investmentDate filter there)
+- Submission Tracking excludes pre-investment periods by design (investmentDate filter) — left as-is per user decision
+
+**Files changed:**
+- `components/layout/PersistentChatPanel.tsx` — chatOpen dependency for company list refresh
+- `app/(app)/admin/companies/client.tsx` — removed onboarding banner + related state/handler
+- `app/(app)/admin/companies/actions.ts` — removed sendOnboardingRequestAction
+- `lib/chat/handler.ts` — agentic loop for onboarding (both handleChatRequest + handlePulseChatRequest), periodLabel passthrough, isOnboarding detection in pulse handler
+- `lib/chat/system-prompt.ts` — periodLabel in schema + instructions
+- `app/submit/[token]/_components/ChatInterface.tsx` — period clear on all modes, periodLabel usage in absorbed handler
+- `app/submit/[token]/_components/ConfirmationSummary.tsx` — periodLabel prop
+- `lib/server/analytics.ts` — onboarding status filter in getPortfolioChartData, snapshot label updates
+- `components/charts/portfolio-chart.tsx` — chart title "Portfolio Performance — Periodic Submissions", removed period label from snapshot heading
+- `app/(app)/dashboard/page.tsx` — removed period selector client component (was added then reverted)
+
 ### Session 2026-04-13 (continued) — RAG audit, dashboard polish, Q&A chip persistence
 
 **RAG audit — full cleanup:**
@@ -716,19 +782,19 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 3. Submission Tracking UX review
 4. Combined financials edge case
 5. Blocklist mode for member access scopes
-6. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green
-7. **End-to-end testing needed** — firm-side submission routing, per-page chat persistence, submission intent detection from Q&A
-8. **Verify build compiles cleanly** — TypeScript check passes as of this session
-9. **Test Q&A chip rotation** — verify chips persist and rotate correctly after asking questions
-10. **Test submission intent detection** — verify "submit data for Brighton" opens submission mode correctly
+6. Verify document badge fix — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green
+7. End-to-end test onboarding multi-year flow — upload Pinnacle historical XLSX, verify all 3 years ingested with correct period labels
+8. Test firm-side onboarding via Pulse AI panel — select company, choose Onboarding, upload file
+9. Verify build compiles cleanly
 
 **Audit items (low priority):**
 - `threshold_rules` and `alerts` tables remain in DB schema + seed but have zero runtime reads — consider dropping in a future migration
-- `evaluateAlerts()` removed; `sendThresholdBreachEmail()` in email.ts is now orphaned (only consumer was alerts.ts)
+- `sendThresholdBreachEmail()` in email.ts is orphaned
+- `components/dashboard/period-selector.tsx` was created but never used — can be deleted
 
 **Demo prep remaining:**
 - Test full drag-drop submission flow end-to-end
-- Test onboarding flow with Pinnacle historical XLSX
+- Test onboarding flow with Pinnacle historical XLSX after db:reset
 - Verify chat panel resets properly across all navigation paths
 - Verify document badges match Submission Tracking on all companies
 

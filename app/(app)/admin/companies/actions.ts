@@ -179,47 +179,6 @@ export async function addCompanyUserAction(companyId: string, firmId: string, em
   return result;
 }
 
-export async function sendOnboardingRequestAction(companyId: string, firmId: string) {
-  const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
-  const user = session.user as any;
-  if (user.persona === "operator") throw new Error("Forbidden");
-
-  const company = db.select().from(schema.companies).where(
-    and(eq(schema.companies.id, companyId), eq(schema.companies.firmId, firmId))
-  ).get();
-  if (!company) throw new Error("Company not found");
-
-  const firm = db.select().from(schema.firms).where(eq(schema.firms.id, firmId)).get();
-  const firmName = firm?.name ?? "your firm";
-
-  const operators = db.select().from(schema.users).where(
-    and(eq(schema.users.companyId, companyId), eq(schema.users.firmId, firmId))
-  ).all();
-
-  const emails = operators.map((u) => u.email).filter(Boolean);
-  const operatorUserIds = operators.map((u) => u.id);
-  const emailSettings = db.select().from(schema.emailSettings).where(eq(schema.emailSettings.firmId, firmId)).get() ?? null;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const chatLink = `${appUrl}/submit/${(company as any).submissionToken}`;
-
-  await sendOnboardingRequestEmail({
-    to: emails,
-    companyName: company.name,
-    firmName,
-    chatLink,
-    settings: emailSettings,
-    firmId,
-    operatorUserIds,
-  });
-
-  const updateSet: any = { onboardingRequestSentAt: new Date().toISOString() };
-  if (!(company as any).onboardingStatus) {
-    updateSet.onboardingStatus = "pending";
-  }
-  db.update(schema.companies).set(updateSet).where(eq(schema.companies.id, companyId)).run();
-}
-
 export async function removeCompanyUserAction(userId: string) {
   db.update(schema.users)
     .set({ companyId: null })

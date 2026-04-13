@@ -37,7 +37,7 @@ const SUBMIT_STRUCTURED_DATA_TOOL: Anthropic.Tool = {
 const SUBMIT_STRUCTURED_DATA_ONBOARDING_TOOL: Anthropic.Tool = {
   name: "submit_structured_data",
   description:
-    "Call this immediately after extracting all KPI values for a specific historical period. Data is absorbed automatically — no operator confirmation required. Call once per period, as soon as you have all available values for that period.",
+    "Call this immediately after extracting all KPI values for a specific historical period. Data is absorbed automatically. Call once per period. If the document contains multiple periods, submit each one separately — you will receive confirmation after each submission.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -343,233 +343,290 @@ export async function handleChatRequest(req: NextRequest, options?: ChatHandlerO
         }
 
         let fullText = "";
+        let loopMessages = anthropicMessages as any[];
+        let loopToolChoice = toolChoice;
+        let agentIterations = 0;
+        const MAX_AGENT_ITERATIONS = 10;
+        let continueLoop = true;
 
-        const claudeStream = anthropic.messages.stream({
-          model: "claude-sonnet-4-6",
-          max_tokens: 4096,
-          system: systemPrompt,
-          messages: anthropicMessages as any,
-          tools,
-          ...(toolChoice ? { tool_choice: toolChoice } : {}),
-        });
-
-        for await (const event of claudeStream) {
-          if (event.type === "content_block_delta") {
-            const delta = event.delta as any;
-            if (delta.type === "text_delta") {
-              fullText += delta.text;
-              send({ type: "text", content: delta.text });
-            }
+        while (continueLoop) {
+          agentIterations++;
+          if (agentIterations > MAX_AGENT_ITERATIONS) {
+            console.warn("[chat handler] Hit max agent iterations, stopping loop");
+            break;
           }
 
-          if (event.type === "message_stop") {
-            const finalMsg = await claudeStream.finalMessage();
+          const claudeStream = anthropic.messages.stream({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4096,
+            system: systemPrompt,
+            messages: loopMessages,
+            tools,
+            ...(loopToolChoice ? { tool_choice: loopToolChoice } : {}),
+          });
 
-            if (fullText) {
-              saveMessage(sessionKey, company.id, "assistant", fullText, "text");
-            }
+          // After the first iteration, never force tool_choice again
+          loopToolChoice = undefined;
 
-            const submitBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "submit_structured_data"
-            ) as any;
-            const repliesBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "suggest_quick_replies"
-            ) as any;
-            const noteBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "save_submission_note"
-            ) as any;
-            const docBlocks = finalMsg.content.filter(
-              (b) => b.type === "tool_use" && b.name === "record_document"
-            ) as any[];
-            const voidBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "void_session_submission"
-            ) as any;
-            const showLastCardBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "show_last_card"
-            ) as any;
-            const editBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "load_submission_for_edit"
-            ) as any;
+          let turnText = "";
 
-            if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock || editBlock) {
-              saveMessage(sessionKey, company.id, "assistant", finalMsg.content, "tool_call");
-            }
-
-            if (mode === "onboarding" && submitBlock) {
-              // Auto-absorb: write directly to DB without client confirmation
-              const payload = submitBlock.input?.payload ?? submitBlock.input;
-              const nowIso = new Date().toISOString();
-
-              // Resolve file paths for record_document entries from onboarding_documents table
-              const onboardingDocs = db
-                .select()
-                .from(schema.onboardingDocuments)
-                .where(eq(schema.onboardingDocuments.companyId, company.id))
-                .all();
-
-              const docRecords = docBlocks.map((b: any) => {
-                const rec = b.input as { fileName: string; documentType: string; includedStatements?: string[] };
-                // Match most recently uploaded file with this name
-                const matches = onboardingDocs.filter((d) => d.fileName === rec.fileName);
-                const matched = matches[matches.length - 1];
-                return {
-                  fileName: rec.fileName,
-                  filePath: matched?.filePath ?? "",
-                  documentType: rec.documentType,
-                  includedStatements: rec.includedStatements,
-                };
-              });
-
-              try {
-                await writePeriodicSubmission(
-                  company,
-                  payload,
-                  userId !== "anonymous" ? userId : null,
-                  nowIso,
-                  docRecords,
-                  "onboarding"
-                );
-                const kpiCount = Object.values(
-                  (payload.kpis ?? {}) as Record<string, { value: number | null }>
-                ).filter((e) => e.value !== null).length;
-                send({ type: "onboarding_absorbed", period: payload.period, kpiCount });
-              } catch (err: any) {
-                console.error("[chat/onboard] absorption failed:", err);
-                send({ type: "error", message: "Failed to store data: " + (err.message ?? "unknown error") });
-              }
-            } else if (submitBlock) {
-              // Periodic mode: send to client for operator confirmation
-              const payload = submitBlock.input?.payload ?? submitBlock.input;
-              send({ type: "tool_call", name: "submit_structured_data", payload });
-            }
-
-            if (repliesBlock) {
-              const replies = repliesBlock.input?.replies;
-              if (Array.isArray(replies) && replies.length > 0) {
-                send({ type: "quick_replies", replies });
+          for await (const event of claudeStream) {
+            if (event.type === "content_block_delta") {
+              const delta = event.delta as any;
+              if (delta.type === "text_delta") {
+                fullText += delta.text;
+                turnText += delta.text;
+                send({ type: "text", content: delta.text });
               }
             }
 
-            for (const docBlock of docBlocks) {
-              // In periodic mode, send to client to accumulate; in onboarding, already handled above
-              if (mode === "periodic") {
-                send({ type: "tool_call", name: "record_document", record: docBlock.input });
+            if (event.type === "message_stop") {
+              const finalMsg = await claudeStream.finalMessage();
+
+              if (turnText) {
+                saveMessage(sessionKey, company.id, "assistant", turnText, "text");
               }
-            }
 
-            if (voidBlock && mode === "periodic") {
-              send({
-                type: "tool_call",
-                name: "void_session_submission",
-                period: voidBlock.input?.period ?? null,
-                fiscalYear: voidBlock.input?.fiscal_year ?? null,
-                reason: voidBlock.input?.reason ?? null,
-              });
-            }
+              const submitBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "submit_structured_data"
+              ) as any;
+              const repliesBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "suggest_quick_replies"
+              ) as any;
+              const noteBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "save_submission_note"
+              ) as any;
+              const docBlocks = finalMsg.content.filter(
+                (b) => b.type === "tool_use" && b.name === "record_document"
+              ) as any[];
+              const voidBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "void_session_submission"
+              ) as any;
+              const showLastCardBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "show_last_card"
+              ) as any;
+              const editBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "load_submission_for_edit"
+              ) as any;
 
-            if (showLastCardBlock) {
-              send({ type: "show_last_card" });
-            }
+              if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock || editBlock) {
+                saveMessage(sessionKey, company.id, "assistant", finalMsg.content, "tool_call");
+              }
 
-            if (editBlock) {
-              const editPeriod = editBlock.input?.period as string;
-              if (editPeriod) {
-                const periodRow = db
+              if (mode === "onboarding" && submitBlock) {
+                // Auto-absorb: write directly to DB without client confirmation
+                const payload = submitBlock.input?.payload ?? submitBlock.input;
+                const nowIso = new Date().toISOString();
+
+                // Resolve file paths for record_document entries from onboarding_documents table
+                const onboardingDocs = db
                   .select()
-                  .from(schema.periods)
-                  .where(and(
-                    eq(schema.periods.firmId, company.firmId),
-                    eq(schema.periods.periodStart, `${editPeriod}-01`)
-                  ))
-                  .get();
+                  .from(schema.onboardingDocuments)
+                  .where(eq(schema.onboardingDocuments.companyId, company.id))
+                  .all();
 
-                if (periodRow) {
-                  const submission = db
+                const docRecords = docBlocks.map((b: any) => {
+                  const rec = b.input as { fileName: string; documentType: string; includedStatements?: string[] };
+                  // Match most recently uploaded file with this name
+                  const matches = onboardingDocs.filter((d) => d.fileName === rec.fileName);
+                  const matched = matches[matches.length - 1];
+                  return {
+                    fileName: rec.fileName,
+                    filePath: matched?.filePath ?? "",
+                    documentType: rec.documentType,
+                    includedStatements: rec.includedStatements,
+                  };
+                });
+
+                try {
+                  await writePeriodicSubmission(
+                    company,
+                    payload,
+                    userId !== "anonymous" ? userId : null,
+                    nowIso,
+                    docRecords,
+                    "onboarding"
+                  );
+                  const kpiCount = Object.values(
+                    (payload.kpis ?? {}) as Record<string, { value: number | null }>
+                  ).filter((e) => e.value !== null).length;
+                  send({ type: "onboarding_absorbed", period: payload.period, periodLabel: payload.periodLabel, kpiCount });
+                } catch (err: any) {
+                  console.error("[chat/onboard] absorption failed:", err);
+                  send({ type: "error", message: "Failed to store data: " + (err.message ?? "unknown error") });
+                }
+              } else if (submitBlock) {
+                // Periodic mode: send to client for operator confirmation
+                const payload = submitBlock.input?.payload ?? submitBlock.input;
+                send({ type: "tool_call", name: "submit_structured_data", payload });
+              }
+
+              if (repliesBlock) {
+                const replies = repliesBlock.input?.replies;
+                if (Array.isArray(replies) && replies.length > 0) {
+                  send({ type: "quick_replies", replies });
+                }
+              }
+
+              for (const docBlock of docBlocks) {
+                // In periodic mode, send to client to accumulate; in onboarding, already handled above
+                if (mode === "periodic") {
+                  send({ type: "tool_call", name: "record_document", record: docBlock.input });
+                }
+              }
+
+              if (voidBlock && mode === "periodic") {
+                send({
+                  type: "tool_call",
+                  name: "void_session_submission",
+                  period: voidBlock.input?.period ?? null,
+                  fiscalYear: voidBlock.input?.fiscal_year ?? null,
+                  reason: voidBlock.input?.reason ?? null,
+                });
+              }
+
+              if (showLastCardBlock) {
+                send({ type: "show_last_card" });
+              }
+
+              if (editBlock) {
+                const editPeriod = editBlock.input?.period as string;
+                if (editPeriod) {
+                  const periodRow = db
                     .select()
-                    .from(schema.submissions)
+                    .from(schema.periods)
                     .where(and(
-                      eq(schema.submissions.companyId, company.id),
-                      eq(schema.submissions.periodId, periodRow.id),
-                      eq(schema.submissions.status, "submitted")
+                      eq(schema.periods.firmId, company.firmId),
+                      eq(schema.periods.periodStart, `${editPeriod}-01`)
                     ))
-                    .orderBy(desc(schema.submissions.version))
                     .get();
 
-                  if (submission) {
-                    const kpiValues = db
+                  if (periodRow) {
+                    const submission = db
                       .select()
-                      .from(schema.kpiValues)
-                      .where(eq(schema.kpiValues.submissionId, submission.id))
-                      .all();
-
-                    const kpiDefs = db
-                      .select()
-                      .from(schema.kpiDefinitions)
+                      .from(schema.submissions)
                       .where(and(
-                        eq(schema.kpiDefinitions.firmId, company.firmId),
-                        eq(schema.kpiDefinitions.active, true)
+                        eq(schema.submissions.companyId, company.id),
+                        eq(schema.submissions.periodId, periodRow.id),
+                        eq(schema.submissions.status, "submitted")
                       ))
-                      .all()
-                      .filter((d: any) => d.companyId === null || d.companyId === company.id);
+                      .orderBy(desc(schema.submissions.version))
+                      .get();
 
-                    const defById = new Map(kpiDefs.map((d: any) => [d.id, d]));
-                    const kpis: Record<string, { value: number | null; operator_note?: string | null }> = {};
-                    for (const v of kpiValues) {
-                      const def = defById.get(v.kpiDefinitionId);
-                      if (def) {
-                        kpis[(def as any).key] = { value: v.actualNumber ?? null, operator_note: v.note ?? null };
+                    if (submission) {
+                      const kpiValues = db
+                        .select()
+                        .from(schema.kpiValues)
+                        .where(eq(schema.kpiValues.submissionId, submission.id))
+                        .all();
+
+                      const kpiDefs = db
+                        .select()
+                        .from(schema.kpiDefinitions)
+                        .where(and(
+                          eq(schema.kpiDefinitions.firmId, company.firmId),
+                          eq(schema.kpiDefinitions.active, true)
+                        ))
+                        .all()
+                        .filter((d: any) => d.companyId === null || d.companyId === company.id);
+
+                      const defById = new Map(kpiDefs.map((d: any) => [d.id, d]));
+                      const kpis: Record<string, { value: number | null; operator_note?: string | null }> = {};
+                      for (const v of kpiValues) {
+                        const def = defById.get(v.kpiDefinitionId);
+                        if (def) {
+                          kpis[(def as any).key] = { value: v.actualNumber ?? null, operator_note: v.note ?? null };
+                        }
                       }
-                    }
 
-                    const docs = db
-                      .select()
-                      .from(schema.financialDocuments)
-                      .where(eq(schema.financialDocuments.submissionId, submission.id))
-                      .all();
+                      const docs = db
+                        .select()
+                        .from(schema.financialDocuments)
+                        .where(eq(schema.financialDocuments.submissionId, submission.id))
+                        .all();
 
-                    const detectedDocTypes: string[] = [];
-                    for (const d of docs) {
-                      if (d.documentType === "combined_financials" && d.includedStatements) {
-                        detectedDocTypes.push(...d.includedStatements.split(",").filter(Boolean));
-                      } else {
-                        detectedDocTypes.push(d.documentType);
+                      const detectedDocTypes: string[] = [];
+                      for (const d of docs) {
+                        if (d.documentType === "combined_financials" && d.includedStatements) {
+                          detectedDocTypes.push(...d.includedStatements.split(",").filter(Boolean));
+                        } else {
+                          detectedDocTypes.push(d.documentType);
+                        }
                       }
-                    }
 
-                    send({
-                      type: "tool_call",
-                      name: "load_submission_for_edit",
-                      payload: {
-                        submission_type: "periodic" as const,
-                        period: editPeriod,
-                        kpis,
-                        overall_note: submission.note ?? null,
-                      },
-                      detectedDocuments: [...new Set(detectedDocTypes)],
-                      currentVersion: submission.version,
-                      companyId: company.id,
-                      companyName: company.name,
-                      enabledKpis: kpiDefs.map((d: any) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType })),
-                      userId,
-                    });
+                      send({
+                        type: "tool_call",
+                        name: "load_submission_for_edit",
+                        payload: {
+                          submission_type: "periodic" as const,
+                          period: editPeriod,
+                          kpis,
+                          overall_note: submission.note ?? null,
+                        },
+                        detectedDocuments: [...new Set(detectedDocTypes)],
+                        currentVersion: submission.version,
+                        companyId: company.id,
+                        companyName: company.name,
+                        enabledKpis: kpiDefs.map((d: any) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType })),
+                        userId,
+                      });
+                    }
                   }
                 }
               }
-            }
 
-            if (noteBlock) {
-              const newNote = noteBlock.input?.note?.trim();
-              if (newNote) {
-                const existing = (company as any).submissionNotes ?? "";
-                const updated = existing ? `${existing}\n- ${newNote}` : `- ${newNote}`;
-                db.update(schema.companies)
-                  .set({ submissionNotes: updated } as any)
-                  .where(eq(schema.companies.id, company.id))
-                  .run();
+              if (noteBlock) {
+                const newNote = noteBlock.input?.note?.trim();
+                if (newNote) {
+                  const existing = (company as any).submissionNotes ?? "";
+                  const updated = existing ? `${existing}\n- ${newNote}` : `- ${newNote}`;
+                  db.update(schema.companies)
+                    .set({ submissionNotes: updated } as any)
+                    .where(eq(schema.companies.id, company.id))
+                    .run();
+                }
+              }
+
+              // Agentic loop for onboarding: if Claude stopped to use tools, feed results back
+              if (mode === "onboarding" && finalMsg.stop_reason === "tool_use") {
+                const toolUseBlocks = finalMsg.content.filter((b) => b.type === "tool_use") as any[];
+                const toolResults: any[] = toolUseBlocks.map((tb: any) => {
+                  let resultText = "ok";
+                  if (tb.name === "submit_structured_data") {
+                    const p = tb.input?.payload ?? tb.input;
+                    const kc = Object.values(
+                      (p.kpis ?? {}) as Record<string, { value: number | null }>
+                    ).filter((e) => e.value !== null).length;
+                    const label = p.periodLabel || p.period || "unknown";
+                    resultText = `Saved ${kc} KPIs for ${label}. Continue with next period if available.`;
+                  }
+                  return {
+                    role: "user" as const,
+                    content: [{
+                      type: "tool_result" as const,
+                      tool_use_id: tb.id,
+                      content: resultText,
+                    }],
+                  };
+                });
+
+                // Append assistant turn + tool results to conversation
+                loopMessages = [
+                  ...loopMessages,
+                  { role: "assistant" as const, content: finalMsg.content },
+                  // Merge all tool_result blocks into a single user message
+                  {
+                    role: "user" as const,
+                    content: toolResults.flatMap((tr: any) => tr.content),
+                  },
+                ];
+                // Continue the loop — will make another API call
+              } else {
+                // Not onboarding tool_use — stop the loop
+                continueLoop = false;
+                send({ type: "done", stopReason: finalMsg.stop_reason });
               }
             }
-
-            send({ type: "done", stopReason: finalMsg.stop_reason });
           }
         }
       } catch (err: any) {
@@ -596,7 +653,7 @@ export interface PulseChatRequestBody {
   message: string;
   companyId?: string;
   uploads?: UploadResult[];
-  contextDataType?: "actuals" | "plan" | "both";
+  contextDataType?: string;  // comma-separated: "actuals", "plan", "both", "onboarding", etc.
   contextPeriods?: string;
 }
 
@@ -617,6 +674,7 @@ export async function handlePulseChatRequest(req: NextRequest) {
   const { message, companyId, uploads = [], contextDataType, contextPeriods } = body;
   const firmId = user.firmId as string;
   const userId = user.id as string;
+  const isOnboarding = contextDataType?.includes("onboarding") ?? false;
 
   const firm = db.select().from(schema.firms).where(eq(schema.firms.id, firmId)).get();
   const firmName = firm?.name ?? "your firm";
@@ -638,10 +696,16 @@ export async function handlePulseChatRequest(req: NextRequest) {
   let docDetectionLine: string | null = null;
 
   if (company) {
-    // Company mode: submission + Q&A
-    const ctx = buildSystemPromptContext(company, firmName, { includePortfolioData: true });
-    systemPrompt = assembleSystemPrompt(ctx);
-    tools = [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL, LOAD_SUBMISSION_FOR_EDIT_TOOL];
+    const ctx = buildSystemPromptContext(company, firmName, { includePortfolioData: !isOnboarding });
+    if (isOnboarding) {
+      // Onboarding mode: auto-absorb historical data
+      systemPrompt = assembleOnboardingSystemPrompt(ctx);
+      tools = [SUBMIT_STRUCTURED_DATA_ONBOARDING_TOOL, SUGGEST_QUICK_REPLIES_TOOL, RECORD_DOCUMENT_TOOL, SAVE_SUBMISSION_NOTE_TOOL];
+    } else {
+      // Company mode: submission + Q&A
+      systemPrompt = assembleSystemPrompt(ctx);
+      tools = [SUBMIT_STRUCTURED_DATA_TOOL, SUGGEST_QUICK_REPLIES_TOOL, SAVE_SUBMISSION_NOTE_TOOL, RECORD_DOCUMENT_TOOL, VOID_SESSION_SUBMISSION_TOOL, SHOW_LAST_CARD_TOOL, LOAD_SUBMISSION_FOR_EDIT_TOOL];
+    }
     docDetectionLine = buildDocDetectionLine(uploads, ctx.requiredDocs);
   } else {
     // Portfolio Q&A mode
@@ -654,7 +718,9 @@ export async function handlePulseChatRequest(req: NextRequest) {
   const history = loadHistory(sessionKey);
 
   const OPENING_QUESTION = company
-    ? `You're viewing ${company.name}. Ask me anything about their data and submissions, or submit data on their behalf.`
+    ? (isOnboarding
+      ? `You're onboarding historical data for ${company.name}. Please share any financial statements, KPI reports, or other documents you have available. There's no strict format required — send what you have and we'll extract what we can.`
+      : `You're viewing ${company.name}. Ask me anything about their data and submissions, or submit data on their behalf.`)
     : `How can I help you with your portfolio today?`;
 
   // Build user content blocks (same logic as handleChatRequest)
@@ -706,9 +772,9 @@ export async function handlePulseChatRequest(req: NextRequest) {
 
   const anthropicMessages = buildAnthropicMessages(history, userContentBlocks, OPENING_QUESTION);
 
-  // Detect submission intent for tool_choice forcing (only in company mode)
+  // Detect submission intent for tool_choice forcing (only in company periodic mode)
   const numberMatches = message.match(/\$?\d[\d,.]+%?/g) || [];
-  const looksLikeSubmission = company && (uploads.length > 0 || numberMatches.length >= 3);
+  const looksLikeSubmission = company && !isOnboarding && (uploads.length > 0 || numberMatches.length >= 3);
   const toolChoice: Anthropic.MessageCreateParams["tool_choice"] | undefined =
     looksLikeSubmission && !isGreeting
       ? { type: "tool" as const, name: "submit_structured_data" }
@@ -728,201 +794,301 @@ export async function handlePulseChatRequest(req: NextRequest) {
         }
 
         let fullText = "";
+        let loopMessages = anthropicMessages as any[];
+        let loopToolChoice = toolChoice;
+        let agentIterations = 0;
+        const MAX_AGENT_ITERATIONS = 10;
+        let continueLoop = true;
 
-        const claudeStream = anthropic.messages.stream({
-          model: "claude-sonnet-4-6",
-          max_tokens: 4096,
-          system: systemPrompt,
-          messages: anthropicMessages as any,
-          tools,
-          ...(toolChoice ? { tool_choice: toolChoice } : {}),
-        });
-
-        for await (const event of claudeStream) {
-          if (event.type === "content_block_delta") {
-            const delta = event.delta as any;
-            if (delta.type === "text_delta") {
-              fullText += delta.text;
-              send({ type: "text", content: delta.text });
-            }
+        while (continueLoop) {
+          agentIterations++;
+          if (agentIterations > MAX_AGENT_ITERATIONS) {
+            console.warn("[chat/pulse] Hit max agent iterations, stopping loop");
+            break;
           }
 
-          if (event.type === "message_stop") {
-            const finalMsg = await claudeStream.finalMessage();
+          const claudeStream = anthropic.messages.stream({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4096,
+            system: systemPrompt,
+            messages: loopMessages,
+            tools,
+            ...(loopToolChoice ? { tool_choice: loopToolChoice } : {}),
+          });
 
-            if (fullText) {
-              saveMessage(sessionKey, companyId ?? "portfolio", "assistant", fullText, "text");
-            }
+          // After the first iteration, never force tool_choice again
+          loopToolChoice = undefined;
 
-            const submitBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "submit_structured_data"
-            ) as any;
-            const repliesBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "suggest_quick_replies"
-            ) as any;
-            const noteBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "save_submission_note"
-            ) as any;
-            const docBlocks = finalMsg.content.filter(
-              (b) => b.type === "tool_use" && b.name === "record_document"
-            ) as any[];
-            const voidBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "void_session_submission"
-            ) as any;
-            const showLastCardBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "show_last_card"
-            ) as any;
-            const editBlock = finalMsg.content.find(
-              (b) => b.type === "tool_use" && b.name === "load_submission_for_edit"
-            ) as any;
+          let turnText = "";
 
-            if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock || editBlock) {
-              saveMessage(sessionKey, companyId ?? "portfolio", "assistant", finalMsg.content, "tool_call");
-            }
-
-            // Periodic submission: send to client for confirmation
-            if (submitBlock) {
-              const payload = submitBlock.input?.payload ?? submitBlock.input;
-              send({ type: "tool_call", name: "submit_structured_data", payload });
-            }
-
-            if (repliesBlock) {
-              const replies = repliesBlock.input?.replies;
-              if (Array.isArray(replies) && replies.length > 0) {
-                send({ type: "quick_replies", replies });
+          for await (const event of claudeStream) {
+            if (event.type === "content_block_delta") {
+              const delta = event.delta as any;
+              if (delta.type === "text_delta") {
+                fullText += delta.text;
+                turnText += delta.text;
+                send({ type: "text", content: delta.text });
               }
             }
 
-            for (const docBlock of docBlocks) {
-              send({ type: "tool_call", name: "record_document", record: docBlock.input });
-            }
+            if (event.type === "message_stop") {
+              const finalMsg = await claudeStream.finalMessage();
 
-            if (voidBlock) {
-              send({
-                type: "tool_call",
-                name: "void_session_submission",
-                period: voidBlock.input?.period ?? null,
-                fiscalYear: voidBlock.input?.fiscal_year ?? null,
-                reason: voidBlock.input?.reason ?? null,
-              });
-            }
-
-            if (showLastCardBlock) {
-              send({ type: "show_last_card" });
-            }
-
-            if (editBlock) {
-              const editPeriod = editBlock.input?.period as string;
-              const editCompanyName = editBlock.input?.company_name as string | undefined;
-
-              // Resolve company: use existing company context, or look up by name from tool input
-              let editCompany = company;
-              if (!editCompany && editCompanyName) {
-                const allCompanies = db.select().from(schema.companies)
-                  .where(eq(schema.companies.firmId, firmId))
-                  .all();
-                // Fuzzy match: case-insensitive substring
-                const lower = editCompanyName.toLowerCase();
-                editCompany = allCompanies.find((c: any) => c.name.toLowerCase().includes(lower)) ?? null;
+              if (turnText) {
+                saveMessage(sessionKey, companyId ?? "portfolio", "assistant", turnText, "text");
               }
 
-              if (editPeriod && editCompany) {
-                const periodRow = db
+              const submitBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "submit_structured_data"
+              ) as any;
+              const repliesBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "suggest_quick_replies"
+              ) as any;
+              const noteBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "save_submission_note"
+              ) as any;
+              const docBlocks = finalMsg.content.filter(
+                (b) => b.type === "tool_use" && b.name === "record_document"
+              ) as any[];
+              const voidBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "void_session_submission"
+              ) as any;
+              const showLastCardBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "show_last_card"
+              ) as any;
+              const editBlock = finalMsg.content.find(
+                (b) => b.type === "tool_use" && b.name === "load_submission_for_edit"
+              ) as any;
+
+              if (submitBlock || noteBlock || docBlocks.length > 0 || voidBlock || editBlock) {
+                saveMessage(sessionKey, companyId ?? "portfolio", "assistant", finalMsg.content, "tool_call");
+              }
+
+              if (isOnboarding && submitBlock && company) {
+                // Onboarding: auto-absorb submission directly to DB
+                const payload = submitBlock.input?.payload ?? submitBlock.input;
+                const nowIso = new Date().toISOString();
+
+                // Resolve file paths for record_document entries from onboarding_documents table
+                const onboardingDocs = db
                   .select()
-                  .from(schema.periods)
-                  .where(and(
-                    eq(schema.periods.firmId, editCompany.firmId),
-                    eq(schema.periods.periodStart, `${editPeriod}-01`)
-                  ))
-                  .get();
+                  .from(schema.onboardingDocuments)
+                  .where(eq(schema.onboardingDocuments.companyId, company.id))
+                  .all();
 
-                if (periodRow) {
-                  const submission = db
+                const docRecords = docBlocks.map((b: any) => {
+                  const rec = b.input as { fileName: string; documentType: string; includedStatements?: string[] };
+                  const matches = onboardingDocs.filter((d) => d.fileName === rec.fileName);
+                  const matched = matches[matches.length - 1];
+                  return {
+                    fileName: rec.fileName,
+                    filePath: matched?.filePath ?? "",
+                    documentType: rec.documentType,
+                    includedStatements: rec.includedStatements,
+                  };
+                });
+
+                try {
+                  await writePeriodicSubmission(
+                    company,
+                    payload,
+                    userId,
+                    nowIso,
+                    docRecords,
+                    "onboarding"
+                  );
+                  const kpiCount = Object.values(
+                    (payload.kpis ?? {}) as Record<string, { value: number | null }>
+                  ).filter((e) => e.value !== null).length;
+                  send({ type: "onboarding_absorbed", period: payload.period, periodLabel: payload.periodLabel, kpiCount });
+                } catch (err: any) {
+                  console.error("[chat/pulse] onboarding absorption failed:", err);
+                  send({ type: "error", message: "Failed to store data: " + (err.message ?? "unknown error") });
+                }
+              } else if (submitBlock) {
+                // Periodic mode: send to client for operator confirmation
+                const payload = submitBlock.input?.payload ?? submitBlock.input;
+                send({ type: "tool_call", name: "submit_structured_data", payload });
+              }
+
+              if (repliesBlock) {
+                const replies = repliesBlock.input?.replies;
+                if (Array.isArray(replies) && replies.length > 0) {
+                  send({ type: "quick_replies", replies });
+                }
+              }
+
+              for (const docBlock of docBlocks) {
+                // In periodic mode, send to client; in onboarding, already handled above
+                if (!isOnboarding) {
+                  send({ type: "tool_call", name: "record_document", record: docBlock.input });
+                }
+              }
+
+              if (voidBlock && !isOnboarding) {
+                send({
+                  type: "tool_call",
+                  name: "void_session_submission",
+                  period: voidBlock.input?.period ?? null,
+                  fiscalYear: voidBlock.input?.fiscal_year ?? null,
+                  reason: voidBlock.input?.reason ?? null,
+                });
+              }
+
+              if (showLastCardBlock) {
+                send({ type: "show_last_card" });
+              }
+
+              if (editBlock && !isOnboarding) {
+                const editPeriod = editBlock.input?.period as string;
+                const editCompanyName = editBlock.input?.company_name as string | undefined;
+
+                // Resolve company: use existing company context, or look up by name from tool input
+                let editCompany = company;
+                if (!editCompany && editCompanyName) {
+                  const allCompanies = db.select().from(schema.companies)
+                    .where(eq(schema.companies.firmId, firmId))
+                    .all();
+                  // Fuzzy match: case-insensitive substring
+                  const lower = editCompanyName.toLowerCase();
+                  editCompany = allCompanies.find((c: any) => c.name.toLowerCase().includes(lower)) ?? null;
+                }
+
+                if (editPeriod && editCompany) {
+                  const periodRow = db
                     .select()
-                    .from(schema.submissions)
+                    .from(schema.periods)
                     .where(and(
-                      eq(schema.submissions.companyId, editCompany.id),
-                      eq(schema.submissions.periodId, periodRow.id),
-                      eq(schema.submissions.status, "submitted")
+                      eq(schema.periods.firmId, editCompany.firmId),
+                      eq(schema.periods.periodStart, `${editPeriod}-01`)
                     ))
-                    .orderBy(desc(schema.submissions.version))
                     .get();
 
-                  if (submission) {
-                    const kpiValues = db
+                  if (periodRow) {
+                    const submission = db
                       .select()
-                      .from(schema.kpiValues)
-                      .where(eq(schema.kpiValues.submissionId, submission.id))
-                      .all();
-
-                    const kpiDefs = db
-                      .select()
-                      .from(schema.kpiDefinitions)
+                      .from(schema.submissions)
                       .where(and(
-                        eq(schema.kpiDefinitions.firmId, editCompany.firmId),
-                        eq(schema.kpiDefinitions.active, true)
+                        eq(schema.submissions.companyId, editCompany.id),
+                        eq(schema.submissions.periodId, periodRow.id),
+                        eq(schema.submissions.status, "submitted")
                       ))
-                      .all()
-                      .filter((d: any) => d.companyId === null || d.companyId === editCompany!.id);
+                      .orderBy(desc(schema.submissions.version))
+                      .get();
 
-                    const defById = new Map(kpiDefs.map((d: any) => [d.id, d]));
-                    const kpis: Record<string, { value: number | null; operator_note?: string | null }> = {};
-                    for (const v of kpiValues) {
-                      const def = defById.get(v.kpiDefinitionId);
-                      if (def) {
-                        kpis[(def as any).key] = { value: v.actualNumber ?? null, operator_note: v.note ?? null };
+                    if (submission) {
+                      const kpiValues = db
+                        .select()
+                        .from(schema.kpiValues)
+                        .where(eq(schema.kpiValues.submissionId, submission.id))
+                        .all();
+
+                      const kpiDefs = db
+                        .select()
+                        .from(schema.kpiDefinitions)
+                        .where(and(
+                          eq(schema.kpiDefinitions.firmId, editCompany.firmId),
+                          eq(schema.kpiDefinitions.active, true)
+                        ))
+                        .all()
+                        .filter((d: any) => d.companyId === null || d.companyId === editCompany!.id);
+
+                      const defById = new Map(kpiDefs.map((d: any) => [d.id, d]));
+                      const kpis: Record<string, { value: number | null; operator_note?: string | null }> = {};
+                      for (const v of kpiValues) {
+                        const def = defById.get(v.kpiDefinitionId);
+                        if (def) {
+                          kpis[(def as any).key] = { value: v.actualNumber ?? null, operator_note: v.note ?? null };
+                        }
                       }
-                    }
 
-                    const docs = db
-                      .select()
-                      .from(schema.financialDocuments)
-                      .where(eq(schema.financialDocuments.submissionId, submission.id))
-                      .all();
+                      const docs = db
+                        .select()
+                        .from(schema.financialDocuments)
+                        .where(eq(schema.financialDocuments.submissionId, submission.id))
+                        .all();
 
-                    const detectedDocTypes: string[] = [];
-                    for (const d of docs) {
-                      if (d.documentType === "combined_financials" && d.includedStatements) {
-                        detectedDocTypes.push(...d.includedStatements.split(",").filter(Boolean));
-                      } else {
-                        detectedDocTypes.push(d.documentType);
+                      const detectedDocTypes: string[] = [];
+                      for (const d of docs) {
+                        if (d.documentType === "combined_financials" && d.includedStatements) {
+                          detectedDocTypes.push(...d.includedStatements.split(",").filter(Boolean));
+                        } else {
+                          detectedDocTypes.push(d.documentType);
+                        }
                       }
-                    }
 
-                    send({
-                      type: "tool_call",
-                      name: "load_submission_for_edit",
-                      payload: {
-                        submission_type: "periodic" as const,
-                        period: editPeriod,
-                        kpis,
-                        overall_note: submission.note ?? null,
-                      },
-                      detectedDocuments: [...new Set(detectedDocTypes)],
-                      currentVersion: submission.version,
-                      companyId: editCompany.id,
-                      companyName: editCompany.name,
-                      enabledKpis: kpiDefs.map((d: any) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType })),
-                      userId,
-                    });
+                      send({
+                        type: "tool_call",
+                        name: "load_submission_for_edit",
+                        payload: {
+                          submission_type: "periodic" as const,
+                          period: editPeriod,
+                          kpis,
+                          overall_note: submission.note ?? null,
+                        },
+                        detectedDocuments: [...new Set(detectedDocTypes)],
+                        currentVersion: submission.version,
+                        companyId: editCompany.id,
+                        companyName: editCompany.name,
+                        enabledKpis: kpiDefs.map((d: any) => ({ key: d.key, label: d.label, unit: d.unit, valueType: d.valueType })),
+                        userId,
+                      });
+                    }
                   }
                 }
               }
-            }
 
-            if (noteBlock && company) {
-              const newNote = noteBlock.input?.note?.trim();
-              if (newNote) {
-                const existing = (company as any).submissionNotes ?? "";
-                const updated = existing ? `${existing}\n- ${newNote}` : `- ${newNote}`;
-                db.update(schema.companies)
-                  .set({ submissionNotes: updated } as any)
-                  .where(eq(schema.companies.id, company.id))
-                  .run();
+              if (noteBlock && company) {
+                const newNote = noteBlock.input?.note?.trim();
+                if (newNote) {
+                  const existing = (company as any).submissionNotes ?? "";
+                  const updated = existing ? `${existing}\n- ${newNote}` : `- ${newNote}`;
+                  db.update(schema.companies)
+                    .set({ submissionNotes: updated } as any)
+                    .where(eq(schema.companies.id, company.id))
+                    .run();
+                }
+              }
+
+              // Agentic loop for onboarding: if Claude stopped to use tools, feed results back
+              if (isOnboarding && finalMsg.stop_reason === "tool_use") {
+                const toolUseBlocks = finalMsg.content.filter((b) => b.type === "tool_use") as any[];
+                const toolResults: any[] = toolUseBlocks.map((tb: any) => {
+                  let resultText = "ok";
+                  if (tb.name === "submit_structured_data") {
+                    const p = tb.input?.payload ?? tb.input;
+                    const kc = Object.values(
+                      (p.kpis ?? {}) as Record<string, { value: number | null }>
+                    ).filter((e) => e.value !== null).length;
+                    const label = p.periodLabel || p.period || "unknown";
+                    resultText = `Saved ${kc} KPIs for ${label}. Continue with next period if available.`;
+                  }
+                  return {
+                    role: "user" as const,
+                    content: [{
+                      type: "tool_result" as const,
+                      tool_use_id: tb.id,
+                      content: resultText,
+                    }],
+                  };
+                });
+
+                // Append assistant turn + tool results to conversation
+                loopMessages = [
+                  ...loopMessages,
+                  { role: "assistant" as const, content: finalMsg.content },
+                  {
+                    role: "user" as const,
+                    content: toolResults.flatMap((tr: any) => tr.content),
+                  },
+                ];
+                // Continue the loop — will make another API call
+              } else {
+                // Not onboarding tool_use — stop the loop
+                continueLoop = false;
+                send({ type: "done", stopReason: finalMsg.stop_reason });
               }
             }
-
-            send({ type: "done", stopReason: finalMsg.stop_reason });
           }
         }
       } catch (err: any) {

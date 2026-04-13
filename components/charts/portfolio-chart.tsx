@@ -115,14 +115,7 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
     periodLabel: string | null;
   }>;
 
-  const snapshotPeriodLabel = (() => {
-    const labels = snapshotWithData.map(d => d.periodLabel).filter(Boolean);
-    if (!labels.length) return null;
-    // Most common label (most companies report the same period)
-    const counts = new Map<string, number>();
-    labels.forEach(l => counts.set(l!, (counts.get(l!) ?? 0) + 1));
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  })();
+  // Period label removed from heading — date varies by company so showing one is misleading
 
   // Trend: use simple indexed keys (c0, c1...) to avoid UUID issues in Recharts dataKey
   const trendDataAbsolute = chartData.trendPeriods.map((p) => {
@@ -192,7 +185,7 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="font-semibold text-sm">Portfolio Performance</h2>
+          <h2 className="font-semibold text-sm">Portfolio Performance — Periodic Submissions</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             {chartData.companies.length} {chartData.companies.length === 1 ? "company" : "companies"}
           </p>
@@ -214,7 +207,7 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
       {/* Snapshot — latest period horizontal bar */}
       <div className="mb-8">
         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-3">
-          Latest Submission{snapshotPeriodLabel ? ` · ${snapshotPeriodLabel}` : ""}
+          {chartData.snapshotLabel}
         </p>
         {hasSnapshotData ? (
           <ResponsiveContainer width="100%" height={snapshotHeight}>

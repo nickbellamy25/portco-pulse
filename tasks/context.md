@@ -529,3 +529,19 @@ Use urlCompanyName (looked up from companyList via companyIdFromUrl) for context
 [2026-04-13] | KpiHealthChart threshold fallback used different RAG logic than rest of app | All RAG evaluation must use plan-based variance only (computeRagPct). No fallback to absolute thresholds. Show "No plan configured" when no plan exists.
 
 [2026-04-13] | Q&A chips disappeared after first user message | In Q&A mode (no companyId), chips must persist — they rotate as used. Only suppress after first message in submission mode.
+
+[2026-04-13] | Chat panel company list stale after adding new company | PersistentChatPanel must include `chatOpen` in the company-list useEffect deps so it refetches when panel opens
+
+[2026-04-13] | Onboarding only processed first year of multi-year docs | Handler needs agentic loop: when stop_reason=tool_use in onboarding mode, send tool_result back to Claude and continue. Max 10 iterations.
+
+[2026-04-13] | Annual data displayed as "December 2025" instead of "FY2025" | Use `periodLabel` field in payload for non-monthly granularity. Claude sets it; client uses it when present, falls back to formatPeriodLabel().
+
+[2026-04-13] | Onboarding banner on Company Settings removed but `/api/companies/onboarding-remind` must stay | The banner JSX + `sendOnboardingRequestAction` are removed. The API endpoint is still used by chat chip intercept in PersistentChatPanel.tsx. Never delete the endpoint.
+
+[2026-04-13] | Firm-side pulse handler (`handlePulseChatRequest`) didn't support onboarding mode | Added `isOnboarding` detection from `contextDataType`. When onboarding: use `assembleOnboardingSystemPrompt`, onboarding tool set, and agentic while loop. Must mirror any future changes to `handleChatRequest`'s onboarding logic.
+
+[2026-04-13] | Dashboard chart showed annual onboarding data alongside monthly data (incomparable) | Filter `getPortfolioChartData` by `onboardingStatus` — exclude "pending" and "in_progress" companies. Chart title: "Portfolio Performance — Periodic Submissions".
+
+[2026-04-13] | Context card period input was pre-filled with current period | Initialize `contextPeriods` state as empty string `""`, not `contextPeriod ?? ""`. The `contextPeriod` prop is only for placeholder hint text.
+
+[2026-04-13] | Two parallel onboarding handlers must stay in sync | `handleChatRequest` (operator, token-based) and `handlePulseChatRequest` (firm, session-based) both have onboarding agentic loops. Changes to onboarding logic must be applied to BOTH handlers.

@@ -148,6 +148,7 @@ function ChatPanelExpanded({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { chatOpen } = useChatContext();
 
   // Active company for submission mode (null = Q&A mode)
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
@@ -181,7 +182,7 @@ function ChatPanelExpanded({
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setCompanyList(data); })
       .catch(() => {});
-  }, [persona]);
+  }, [persona, chatOpen]);
 
   // Fetch outstanding data for Submissions page
   useEffect(() => {

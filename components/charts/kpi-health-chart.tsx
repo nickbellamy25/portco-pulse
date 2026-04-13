@@ -1,16 +1,11 @@
 "use client";
 
-export type ThresholdRule = { ruleType: string; value: number; severity: string };
-
 type KpiEntry = {
   kpiKey: string;
   kpiLabel: string;
   unit: string | null;
   currentValue: number;
-  threshold: ThresholdRule | null;
-  rag: "red" | "amber" | "green" | null;  // null = no plan + no threshold
-  ragSource: "plan" | "threshold" | null;
-  gap: number | null;
+  rag: "red" | "amber" | "green" | null;  // null = no plan
 };
 
 const RAG_STYLE = {
@@ -36,46 +31,18 @@ function fmtVal(v: number, unit: string | null | undefined): string {
   return v.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
-function thresholdToRag(current: number, rule: ThresholdRule): "red" | "amber" | "green" {
-  const isMin = rule.ruleType === "lt" || rule.ruleType === "lte";
-  if (isMin) {
-    if (current < rule.value) return "red";
-    if (current < rule.value * 1.2) return "amber";
-    return "green";
-  } else {
-    if (current > rule.value) return "red";
-    if (current > rule.value * 0.8) return "amber";
-    return "green";
-  }
-}
-
 type Props = {
-  thresholds: Record<string, ThresholdRule[]>;
   latestValues: Record<string, { value: number; unit: string | null; label: string; ragEffective: "green" | "amber" | "red" | null }>;
 };
 
-export function KpiHealthChart({ thresholds, latestValues }: Props) {
-  const entries: KpiEntry[] = Object.entries(latestValues).map(([kpiKey, kv]) => {
-    const rules = thresholds[kpiKey];
-    const rule = rules?.[0] ?? null;
-
-    // RAG from plan takes priority; fall back to threshold-derived RAG
-    let rag: "red" | "amber" | "green" | null = null;
-    let ragSource: "plan" | "threshold" | null = null;
-
-    if (kv.ragEffective) {
-      rag = kv.ragEffective;
-      ragSource = "plan";
-    } else if (rule) {
-      rag = thresholdToRag(kv.value, rule);
-      ragSource = "threshold";
-    }
-
-    const isMin = rule?.ruleType === "lt" || rule?.ruleType === "lte";
-    const gap = rule ? (isMin ? kv.value - rule.value : rule.value - kv.value) : null;
-
-    return { kpiKey, kpiLabel: kv.label, unit: kv.unit, currentValue: kv.value, threshold: rule, rag, ragSource, gap };
-  });
+export function KpiHealthChart({ latestValues }: Props) {
+  const entries: KpiEntry[] = Object.entries(latestValues).map(([kpiKey, kv]) => ({
+    kpiKey,
+    kpiLabel: kv.label,
+    unit: kv.unit,
+    currentValue: kv.value,
+    rag: kv.ragEffective,
+  }));
 
   if (entries.length === 0) return null;
 
@@ -117,20 +84,6 @@ export function KpiHealthChart({ thresholds, latestValues }: Props) {
       <div className="flex flex-wrap gap-2">
         {entries.map((entry, i) => {
           const style = RAG_STYLE[entry.rag ?? "none"];
-          const isMin = entry.threshold?.ruleType === "lt" || entry.threshold?.ruleType === "lte";
-
-          // Gap/context text
-          let subText: string | null = null;
-          if (entry.ragSource === "threshold" && entry.threshold && entry.gap !== null) {
-            const tLabel = `threshold (${isMin ? "<" : ">"}${fmtVal(entry.threshold.value, entry.unit)})`;
-            if (entry.rag === "red") {
-              subText = isMin
-                ? `${fmtVal(Math.abs(entry.gap), entry.unit)} below ${tLabel}`
-                : `${fmtVal(Math.abs(entry.gap), entry.unit)} above ${tLabel}`;
-            } else {
-              subText = `${fmtVal(entry.gap, entry.unit)} ${isMin ? "above" : "below"} ${tLabel}`;
-            }
-          }
 
           return (
             <div key={`${entry.kpiKey}-${i}`} className={`rounded-lg border p-3.5 w-72 shrink-0 ${style.card}`}>
@@ -145,8 +98,8 @@ export function KpiHealthChart({ thresholds, latestValues }: Props) {
               <p className={`text-xl font-bold tabular-nums leading-tight ${style.value}`}>
                 {fmtVal(entry.currentValue, entry.unit)}
               </p>
-              <p className={`text-[11px] mt-1 leading-snug ${subText ? `${style.value} opacity-80` : "text-muted-foreground"}`}>
-                {subText ?? (entry.rag === null ? "No threshold configured" : entry.ragSource === "plan" ? "vs. plan" : "")}
+              <p className={`text-[11px] mt-1 leading-snug ${entry.rag ? `${style.value} opacity-80` : "text-muted-foreground"}`}>
+                {entry.rag === null ? "No plan configured" : "vs. plan"}
               </p>
             </div>
           );

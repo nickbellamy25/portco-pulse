@@ -39,17 +39,6 @@ export function buildPortfolioDataSection(firmId: string): string {
       .all()
       .filter((d) => ["currency", "percent", "integer"].includes(d.valueType));
 
-    // Firm-wide alert rules
-    const alertRules = db
-      .select()
-      .from(schema.thresholdRules)
-      .where(and(
-        eq(schema.thresholdRules.firmId, firmId),
-        isNull(schema.thresholdRules.companyId),
-        eq(schema.thresholdRules.active, true),
-      ))
-      .all();
-
     const allCompanies = db
       .select()
       .from(schema.companies)
@@ -154,16 +143,13 @@ export function buildPortfolioDataSection(firmId: string): string {
         ragGreenPct: (d as any).ragGreenPct ?? null,
         ragAmberPct: (d as any).ragAmberPct ?? null,
       })),
-      alertRules: alertRules.map((r) => {
-        const def = kpiDefs.find((d) => d.id === r.kpiDefinitionId);
-        return {
-          kpiKey: def?.key ?? null,
-          kpiLabel: def?.label ?? null,
-          ruleType: r.ruleType,
-          threshold: r.thresholdValue,
-          severity: r.severity,
-        };
-      }),
+      ragThresholds: kpiDefs.map((d) => ({
+        kpiKey: d.key,
+        kpiLabel: d.label,
+        ragDirection: (d as any).ragDirection ?? null,
+        ragGreenPct: (d as any).ragGreenPct ?? null,
+        ragAmberPct: (d as any).ragAmberPct ?? null,
+      })),
       currentPeriod: openPeriod?.periodStart.slice(0, 7) ?? null,
     });
   } catch (err: any) {
@@ -602,7 +588,7 @@ ${kpiList}
 
 PLATFORM KNOWLEDGE
 You can answer questions about how PortCo Pulse works:
-- Firmwide KPIs: configured in Firm Settings, tracked across all companies. Each has RAG thresholds (green = within X% of plan, amber = within Y%, red = beyond Y%) and optional alert rules (trigger notifications when actual crosses a threshold). Direction (higher_is_better / lower_is_better) determines variance coloring.
+- Firmwide KPIs: configured in Firm Settings, tracked across all companies. Each has RAG thresholds (green = within X% of plan, amber = within Y%, red = beyond Y%) that determine On Track / At Risk / Off Track status. Amber/red status can optionally trigger email alerts. Direction (higher_is_better / lower_is_better) determines variance coloring.
 - Company overrides: any firmwide KPI setting (thresholds, cadence, alerts) can be overridden per-company in Company Settings → KPIs tab. Company-specific custom KPIs can also be added there.
 - Submissions: operators submit monthly KPIs via a conversational chat link (token-based, no login required). Required documents are configurable per-company. Status progression: Not Submitted → Partial (KPIs submitted but required docs missing) → Complete (KPIs + all required docs).
 - Plans: annual KPI targets submitted by operators via a separate plan link. Plan vs actual variance drives RAG status. Plans can be revised (versioned).
@@ -633,7 +619,7 @@ Rules:
 - Tables are fine. Written commentary: 2–3 lines max.
 - If data for a period is missing or not yet submitted, say so — never extrapolate or estimate.
 - If a KPI value is null in the data, say it was not reported for that period.
-- KPI configuration questions (thresholds, alert rules, RAG criteria) can be answered from the KPI definitions above. Present them in a compact table.
+- KPI configuration questions (thresholds, RAG criteria) can be answered from the KPI definitions above. Present them in a compact table.
 - If a question is outside the scope of available data, say so in ONE short sentence — no suggestions, no alternatives, no multi-line explanation. Example: "That's not captured as a KPI." Never offer to help in other ways or suggest uploading files.
 - Never fabricate numbers.
 - Never narrate your thinking or self-correct out loud. Present only the final correct answer. No "wait", "actually", "correcting", or meta-commentary.
@@ -681,7 +667,7 @@ ${dataSection}
 
 PLATFORM KNOWLEDGE
 You can answer questions about how PortCo Pulse works:
-- Firmwide KPIs: configured in Firm Settings, tracked across all companies. Each has RAG thresholds (green = within X% of plan, amber = within Y%, red = beyond Y%) and optional alert rules (trigger notifications when actual crosses a threshold). Direction (higher_is_better / lower_is_better) determines variance coloring.
+- Firmwide KPIs: configured in Firm Settings, tracked across all companies. Each has RAG thresholds (green = within X% of plan, amber = within Y%, red = beyond Y%) that determine On Track / At Risk / Off Track status. Amber/red status can optionally trigger email alerts. Direction (higher_is_better / lower_is_better) determines variance coloring.
 - Company overrides: any firmwide KPI setting (thresholds, cadence, alerts) can be overridden per-company in Company Settings → KPIs tab. Company-specific custom KPIs can also be added there.
 - Submissions: operators submit monthly KPIs via a conversational chat link (token-based, no login required). Required documents are configurable per-company. Status progression: Not Submitted → Partial (KPIs submitted but required docs missing) → Complete (KPIs + all required docs).
 - Plans: annual KPI targets submitted by operators via a separate plan link. Plan vs actual variance drives RAG status. Plans can be revised (versioned).
@@ -711,7 +697,7 @@ Rules:
 - For cross-company comparisons, present a compact table.
 - If data for a period is missing or not submitted, say so — never extrapolate or estimate.
 - If a KPI value is null in the data, say it was not reported for that period.
-- KPI configuration questions (thresholds, alert rules, RAG criteria) can be answered from the kpiDefinitions and alertRules in the portfolio data. Present them in a compact table.
+- KPI configuration questions (thresholds, RAG criteria) can be answered from the kpiDefinitions and ragThresholds in the portfolio data. Present them in a compact table.
 - If a question is outside the scope of available data, say so in ONE short sentence — no suggestions, no alternatives, no multi-line explanation. Example: "I don't have access to that data." Never offer to help in other ways or suggest uploading files.
 - Never fabricate numbers.
 - MoM change: ((current − prior) / |prior|) × 100, stated as "+X.X%" or "−X.X%".

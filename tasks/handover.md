@@ -649,6 +649,63 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 - `app/api/companies/route.ts` — added onboardingStatus to response
 - `app/api/companies/onboarding-remind/route.ts` — new endpoint
 
+### Session 2026-04-13 (continued) — RAG audit, dashboard polish, Q&A chip persistence
+
+**RAG audit — full cleanup:**
+- Removed `hasAlert` from `getPortfolioChartData()` and `portfolio-chart.tsx` (was reading `alerts` table, never rendered)
+- Removed `kpiThresholds` from `getPortfolioChartData()` (built from `threshold_rules`, never consumed by any component)
+- Migrated monthly digest (`/api/cron/monthly-digest`) from `alerts` table count to `getLatestSubmissionRagCount()` (plan variance)
+- Updated chat system prompt: replaced `thresholdRules` query with `ragThresholds` from `kpiDefinitions` (ragDirection, ragGreenPct, ragAmberPct)
+- Removed dead `evaluateAlerts()` function from `lib/server/alerts.ts`
+- Removed unused `activeAlerts` query + field from `getCompanyAnalytics()` (read from `alerts` table, never rendered in UI)
+- Removed threshold fallback from `KpiHealthChart` — now plan-only RAG, shows "No plan configured" when no plan exists
+- Removed threshold query from `getCompanyAnalytics()` (was feeding KpiHealthChart fallback)
+- **Result: zero runtime reads of `alerts` table, one remaining read of `threshold_rules` in seed only**
+
+**Dashboard plan resolution bug fix:**
+- `getLatestSubmissionRagCount()` had a simplified plan value resolver that only handled 2 cases (annual and monthly)
+- Missed `quarterly_end` (Headcount), `quarterly_total`, `annual_end`, and per-KPI `planGranularity`
+- Caused Headcount to show as massively off track (comparing against wrong plan value)
+- Replaced with full 6-case granularity switch matching `getPlanValue()` logic from `getCompanyAnalytics()`
+
+**Dashboard Off Track / At Risk grid polish:**
+- Removed redundant "Off Track" / "At Risk" status labels from each KPI row (already in section heading)
+- New KPI row format: `EBITDA >15% from plan of $4,200    -28.6% ($3,011)` — left shows rule threshold + plan, right shows variance % + actual
+- Added `rulePct` to `LatestSubmissionKpiViolation` type (threshold % that triggered the status)
+- Heading counts now show **violation count** (individual KPIs) not company count
+
+**Other UI changes:**
+- Removed "Total Submissions" stat card from Company Analytics Key Metrics (not relevant)
+- Context card period placeholder now dynamic — shows firm's latest open period (e.g., "April 2026") instead of hardcoded "March 2025"
+
+**Q&A chip persistence:**
+- Chips now stay visible in Q&A mode after questions are asked/answered (was disappearing after first user message)
+- Used chips rotate out and get replaced by next in the pool
+- Full chip pools passed to ChatInterface (Dashboard: 6 chips, Company: 5 chips) — was previously sliced to 2
+- Submission mode still suppresses chips after first message (conversation starters only)
+
+**Submission intent detection from Q&A panel:**
+- Added `onMessageIntercept` callback to ChatInterface — lets parent intercept user text before it goes to the AI
+- PersistentChatPanel detects submission intent: explicit phrases ("submit data", "enter data"), 3+ numbers, or file uploads
+- Question patterns excluded from interception ("what", "how", "show me", etc.)
+- Company auto-detection from message text via `matchCompanyFromFilename`
+- If company found: auto-switches to submission mode and forwards the message
+- If not found: opens company picker, stashes text as `pendingSubmissionText`, forwards after selection
+
+**Files changed:**
+- `lib/server/analytics.ts` — removed hasAlert, kpiThresholds, activeAlerts, threshold queries; fixed plan resolution; added rulePct
+- `lib/server/alerts.ts` — emptied (dead code removed)
+- `lib/chat/system-prompt.ts` — replaced thresholdRules with ragThresholds from kpiDefs
+- `app/api/cron/monthly-digest/route.ts` — migrated to getLatestSubmissionRagCount
+- `app/(app)/dashboard/page.tsx` — grid redesign, violation counts
+- `app/(app)/analytics/client.tsx` — removed Total Submissions card, removed thresholds prop
+- `components/charts/portfolio-chart.tsx` — removed hasAlert
+- `components/charts/kpi-health-chart.tsx` — removed threshold fallback, plan-only RAG
+- `app/submit/[token]/_components/ChatInterface.tsx` — onMessageIntercept, Q&A chip persistence, context period
+- `components/layout/PersistentChatPanel.tsx` — submission intent detection, full chip pools, pendingSubmissionText
+- `app/api/chat/context/route.ts` — added latestPeriodLabel
+- `app/submit/[token]/page.tsx` — dynamic contextPeriod from latest open period
+
 ---
 
 ## What's next — Phase 3 remaining
@@ -659,22 +716,21 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 3. Submission Tracking UX review
 4. Combined financials edge case
 5. Blocklist mode for member access scopes
-6. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green (matching Submission Tracking)
-7. **End-to-end testing needed** — firm-side submission routing, per-page chat persistence, drag-drop file submission
-8. **Verify build compiles cleanly** — TypeScript check couldn't complete last session
-9. User mentioned a "second change" related to Revenue/Gross Margin/EBITDA being the key metrics — first change (plan attainment table) done, second not yet discussed
+6. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green
+7. **End-to-end testing needed** — firm-side submission routing, per-page chat persistence, submission intent detection from Q&A
+8. **Verify build compiles cleanly** — TypeScript check passes as of this session
+9. **Test Q&A chip rotation** — verify chips persist and rotate correctly after asking questions
+10. **Test submission intent detection** — verify "submit data for Brighton" opens submission mode correctly
 
 **Audit items (low priority):**
-- `evaluateAlerts()` in `lib/server/alerts.ts` is dead code — consider removing
-- `threshold_rules` and `alerts` tables are no longer read for display — consider deprecation plan
-- Company Analytics `activeAlerts` reads from `alerts` table but is not rendered — clean up or wire into UI
+- `threshold_rules` and `alerts` tables remain in DB schema + seed but have zero runtime reads — consider dropping in a future migration
+- `evaluateAlerts()` removed; `sendThresholdBreachEmail()` in email.ts is now orphaned (only consumer was alerts.ts)
 
 **Demo prep remaining:**
-- Test full drag-drop submission flow end-to-end (Brighton XLSX, Apex TXT, Culinary PDF)
+- Test full drag-drop submission flow end-to-end
 - Test onboarding flow with Pinnacle historical XLSX
 - Verify chat panel resets properly across all navigation paths
 - Verify document badges match Submission Tracking on all companies
-- Verify per-page chat storage works across all navigation paths (Dashboard ↔ Tracking ↔ Data ↔ Settings)
 
 ---
 

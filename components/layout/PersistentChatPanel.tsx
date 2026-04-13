@@ -32,6 +32,7 @@ interface CompanyMeta {
   userId: string;
   requiredDocs?: string;
   requiredDocCadences?: string;
+  latestPeriodLabel?: string;
   initialMessages?: Array<{
     role: "user" | "assistant";
     content: string;
@@ -160,6 +161,7 @@ function ChatPanelExpanded({
   // Pending files/text from pre-selection flow
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pendingAutoMessage, setPendingAutoMessage] = useState<string | undefined>(undefined);
+  const [pendingSubmissionText, setPendingSubmissionText] = useState<string | null>(null);
 
 
   // Reminder state (for Submissions page chips)
@@ -225,8 +227,13 @@ function ChatPanelExpanded({
   function handleSelectCompany(companyId: string) {
     setShowCompanyPicker(false);
     setActiveCompanyId(companyId);
+    // Forward pending submission text (from intent detection) as auto-message
+    if (pendingSubmissionText) {
+      setPendingAutoMessage(pendingSubmissionText);
+      setPendingSubmissionText(null);
+    }
     // Only auto-send when files were pending (from drop) — otherwise let user pick from chips
-    if (pendingFiles.length > 0) {
+    else if (pendingFiles.length > 0) {
       setPendingAutoMessage(`Submitting actuals for the current period. Extract all KPI values from the attached file(s).`);
     }
   }
@@ -236,6 +243,7 @@ function ChatPanelExpanded({
     setCompanyMeta(null);
     setPendingFiles([]);
     setPendingAutoMessage(undefined);
+    setPendingSubmissionText(null);
   }
 
   // Determine effective company ID (operators always use their own)
@@ -285,7 +293,7 @@ function ChatPanelExpanded({
 
   function buildChips(): string[] {
     // Portfolio Q&A chips per page
-    if (isDashboard) return DASHBOARD_CHIPS.slice(0, 2);
+    if (isDashboard) return DASHBOARD_CHIPS;
     if (isSubmissions) {
       return [
         "Send reminders to companies with no submission this period",
@@ -300,7 +308,7 @@ function ChatPanelExpanded({
       }
       return chips;
     }
-    if (isAnalytics) return DASHBOARD_CHIPS.slice(0, 2);
+    if (isAnalytics) return DASHBOARD_CHIPS;
     if (isCompanySettings && urlCompanyName) {
       const chips = COMPANY_SETTINGS_CHIPS_FN(urlCompanyName);
       const comp = companyList.find(c => c.id === companyIdFromUrl);
@@ -315,6 +323,52 @@ function ChatPanelExpanded({
   }
 
   const fixedChip = (!effectiveCompanyId && persona === "investor") ? "Submit data for a company \u2192" : undefined;
+
+  // ── Submission intent detection (Q&A mode only) ─────────────────────────
+  // Detects when a user message in Q&A mode is actually a submission intent
+  // and routes them to submission mode instead of the Q&A endpoint.
+
+  const SUBMISSION_PHRASES = /\b(submit|submit\s+data|enter\s+data|report\s+data|upload\s+data|send\s+data|input\s+data|log\s+data|record\s+data|file\s+data|submit\s+for|submit\s+actuals|enter\s+actuals|report\s+actuals|i\s+want\s+to\s+submit|i\s+need\s+to\s+submit|ready\s+to\s+submit|let\s*'?s\s+submit)\b/i;
+  const QUESTION_PHRASES = /\b(what|which|who|how|show|list|display|compare|when|where|why|has\s+been\s+submitted|submission\s+status|submissions\s+for)\b/i;
+
+  function detectSubmissionIntent(text: string, uploads: UploadResult[]): boolean {
+    // File uploads in Q&A mode always indicate submission intent
+    if (uploads.length > 0) return true;
+
+    // If it looks like a question, don't intercept
+    if (QUESTION_PHRASES.test(text) && !SUBMISSION_PHRASES.test(text)) return false;
+
+    // Check for explicit submission phrases
+    if (SUBMISSION_PHRASES.test(text)) return true;
+
+    // Check for data-heavy messages (3+ numbers suggest KPI data entry)
+    const numberMatches = text.match(/\d[\d,]*\.?\d*/g);
+    if (numberMatches && numberMatches.length >= 3) return true;
+
+    return false;
+  }
+
+  function handleMessageIntercept(text: string, uploads: UploadResult[]): boolean {
+    // Only intercept in Q&A mode for investors
+    if (effectiveCompanyId || persona !== "investor") return false;
+
+    if (!detectSubmissionIntent(text, uploads)) return false;
+
+    // Try to extract company name from the message text
+    const matchedCompanyId = matchCompanyFromFilename(text);
+
+    if (matchedCompanyId) {
+      // Company found — auto-select and forward the message
+      setPendingSubmissionText(text);
+      handleSelectCompany(matchedCompanyId);
+    } else {
+      // No company matched — open picker and stash the message
+      setPendingSubmissionText(text);
+      setShowCompanyPicker(true);
+    }
+
+    return true; // intercepted
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -355,7 +409,7 @@ function ChatPanelExpanded({
         <div className="px-3 py-2 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[11px] font-medium text-muted-foreground">Select a company:</span>
-            <button type="button" onClick={() => { setShowCompanyPicker(false); setPendingFiles([]); }} className="text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => { setShowCompanyPicker(false); setPendingFiles([]); setPendingSubmissionText(null); }} className="text-muted-foreground hover:text-foreground">
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -399,9 +453,11 @@ function ChatPanelExpanded({
             compact={true}
             requiredDocs={companyMeta?.requiredDocs}
             requiredDocCadences={companyMeta?.requiredDocCadences}
+            contextPeriod={companyMeta?.latestPeriodLabel}
             promptChips={effectiveCompanyId ? [] : buildChips()}
             fixedChip={effectiveCompanyId ? undefined : fixedChip}
             autoMessage={pendingAutoMessage}
+            onMessageIntercept={!effectiveCompanyId ? handleMessageIntercept : undefined}
             onChipIntercept={(chip) => {
               // Handle special chips that shouldn't go to the AI
               if (chip === "Submit data for a company \u2192") {

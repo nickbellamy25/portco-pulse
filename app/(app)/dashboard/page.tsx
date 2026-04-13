@@ -107,9 +107,8 @@ export default async function DashboardPage({
         }
         const offTrack = latestRag.companies.filter((c) => c.worstSeverity === "high");
         const atRisk = latestRag.companies.filter((c) => c.worstSeverity === "medium");
-
-        const severityLabel: Record<string, string> = { high: "Off Track", medium: "At Risk", low: "On Track" };
-        const severityColor: Record<string, string> = { high: "text-red-600", medium: "text-amber-600", low: "text-green-600" };
+        const offTrackViolations = offTrack.reduce((n, c) => n + c.violations.filter((v) => v.ragStatus === "red").length, 0);
+        const atRiskViolations = atRisk.reduce((n, c) => n + c.violations.filter((v) => v.ragStatus === "amber").length, 0);
 
         function CompanyCard({ c, isRed }: { c: typeof latestRag.companies[0]; isRed: boolean }) {
           return (
@@ -121,18 +120,23 @@ export default async function DashboardPage({
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0">{c.periodLabel}</span>
               </div>
-              <div className="space-y-2.5 pl-5">
-                {c.violations.map((v) => (
-                  <div key={v.kpiKey}>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-xs font-medium">{v.kpiLabel}</span>
-                      <span className="text-xs font-semibold shrink-0">{fmtKpiValue(v.actual, v.unit)}</span>
+              <div className="space-y-1.5 pl-5">
+                {c.violations.map((v) => {
+                  return (
+                    <div key={v.kpiKey} className="flex items-baseline justify-between gap-3">
+                      <p className="text-xs min-w-0">
+                        <span className="font-semibold">{v.kpiLabel}</span>
+                        <span className={`ml-1.5 ${isRed ? "text-red-600" : "text-amber-600"}`}>
+                          &gt;{v.rulePct}% from plan of {fmtKpiValue(v.plan, v.unit)}
+                        </span>
+                      </p>
+                      <span className="text-xs tabular-nums shrink-0">
+                        <span className={`font-semibold ${isRed ? "text-red-600" : "text-amber-600"}`}>{v.variancePct >= 0 ? "+" : ""}{v.variancePct.toFixed(1)}%</span>
+                        {" "}<span className="text-muted-foreground">({fmtKpiValue(v.actual, v.unit)})</span>
+                      </span>
                     </div>
-                    <p className={`text-[11px] mt-0.5 ${v.ragStatus === "red" ? "text-red-600" : "text-amber-600"}`}>
-                      {v.ragStatus === "red" ? "Off Track" : "At Risk"}: {v.variancePct >= 0 ? "+" : ""}{v.variancePct.toFixed(1)}% vs plan
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
@@ -147,7 +151,7 @@ export default async function DashboardPage({
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-red-600 mb-2">
-                  Off Track ({offTrack.length})
+                  Off Track ({offTrackViolations})
                 </p>
                 {offTrack.length === 0
                   ? <p className="text-sm text-muted-foreground italic">None</p>
@@ -156,7 +160,7 @@ export default async function DashboardPage({
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 mb-2">
-                  At Risk ({atRisk.length})
+                  At Risk ({atRiskViolations})
                 </p>
                 {atRisk.length === 0
                   ? <p className="text-sm text-muted-foreground italic">None</p>

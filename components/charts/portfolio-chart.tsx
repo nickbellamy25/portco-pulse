@@ -100,19 +100,18 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
 
   // Snapshot: sorted descending, nulls at bottom
   const snapshotData = chartData.companies
-    .map((c) => ({ id: c.id, name: c.name, value: getLatest(c), hasAlert: c.hasAlert, periodLabel: c.latestPeriodLabel }))
+    .map((c) => ({ id: c.id, name: c.name, value: getLatest(c), periodLabel: c.latestPeriodLabel }))
     .sort((a, b) => {
       if (a.value === null && b.value === null) return 0;
       if (a.value === null) return 1;
       if (b.value === null) return -1;
       return b.value - a.value;
-    }) as Array<{ id: string; name: string; value: number | null; hasAlert: boolean }>;
+    }) as Array<{ id: string; name: string; value: number | null }>;
 
   const snapshotWithData = snapshotData.filter((d) => d.value !== null) as Array<{
     id: string;
     name: string;
     value: number;
-    hasAlert: boolean;
     periodLabel: string | null;
   }>;
 

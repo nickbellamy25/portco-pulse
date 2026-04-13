@@ -60,6 +60,7 @@ interface Props {
   requiredDocCadences?: string;
   onMessagesChange?: (msgs: ChatMessage[]) => void;
   onChipIntercept?: (chip: string) => boolean;
+  onMessageIntercept?: (text: string, uploads: UploadResult[]) => boolean;
   onEditCompanySwitch?: (companyId: string) => void;
 }
 
@@ -85,6 +86,7 @@ export function ChatInterface({
   requiredDocCadences,
   onMessagesChange,
   onChipIntercept,
+  onMessageIntercept,
   onEditCompanySwitch,
 }: Props) {
   // Restore submitted cards after the text history (they happened at the end of the prior session)
@@ -129,6 +131,9 @@ export function ChatInterface({
   const sendMessage = useCallback(async (text: string, uploads: UploadResult[]) => {
     const userText = text.trim();
     if (!userText && uploads.length === 0) return;
+
+    // Let parent intercept the message (e.g. submission intent detection in Q&A mode)
+    if (onMessageIntercept?.(userText, uploads)) return;
 
     // Capture and dismiss context panel on first send
     const isFirstSend = !contextDismissed;
@@ -376,7 +381,7 @@ export function ChatInterface({
       setIsLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
-  }, [token, companyId, contextDismissed, contextDataTypes, contextPeriods]);
+  }, [token, companyId, contextDismissed, contextDataTypes, contextPeriods, onMessageIntercept]);
 
   // Scroll to bottom on mount if there are initial messages
   useEffect(() => {
@@ -543,7 +548,7 @@ export function ChatInterface({
                 value={contextPeriods}
                 onChange={(e) => setContextPeriods(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); textareaRef.current?.focus(); } }}
-                placeholder="e.g. March 2025, or Q1 2025"
+                placeholder={contextPeriod ? `e.g. ${contextPeriod}` : "e.g. March 2025, or Q1 2025"}
                 className="w-full rounded-md border border-border bg-background px-2.5 py-1 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
               <span className="text-[10px] text-muted-foreground">{contextDataTypes.has("onboarding") ? "All data will be processed unless otherwise noted." : "Only data from periods you list will be collected."}</span>
@@ -699,13 +704,14 @@ export function ChatInterface({
 
       {/* Prompt chips + quick replies + input: single border-t above whichever comes first */}
       {(() => {
-        // Suppress prompt chips while autoMessage is pending OR once the user has engaged in conversation
-        // (sent a message and received a response — chips are conversation starters only)
+        // In Q&A mode (no companyId): chips always visible, rotate as used
+        // In submission mode: suppress after first user message (conversation starters only)
         const autoMessagePending = !!autoMessage && !autoMessageSentRef.current;
+        const isQaMode = !companyId && !editCompanyIdRef.current;
         const lastSubmittedIndex = messages.findLastIndex(m => m.submittedPayload);
         const lastUserIndex = messages.findLastIndex(m => m.role === "user");
         const hasActiveConversation = lastUserIndex > lastSubmittedIndex;
-        const showPromptChips = quickReplies.length === 0 && !autoMessagePending && !hasActiveConversation;
+        const showPromptChips = quickReplies.length === 0 && !autoMessagePending && (isQaMode || !hasActiveConversation);
         const poolLimit = fixedChip ? 2 : 3;
         const visiblePromptChips = showPromptChips
           ? promptChips.filter((c) => !usedPromptChips.has(c)).slice(0, poolLimit)

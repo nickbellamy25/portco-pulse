@@ -40,6 +40,10 @@ Build a production-ready PE portfolio monitoring platform that a real PE firm co
 - [ ] **Wire company-specific KPIs into chat submission** — custom KPIs added in Company Settings should appear in the operator's chat submission flow
 - [ ] **Submission Tracking UX review** — detailed review pass; fix any rough edges in the status matrix
 - [x] **Dashboard alerts consolidated to RAG** — rewrote from absolute threshold rules to % variance from plan; old `evaluateAlerts()` is dead code
+- [x] **Full RAG audit** — removed all runtime reads of `alerts` and `threshold_rules` tables; KpiHealthChart plan-only; monthly digest migrated
+- [x] **Dashboard Off Track / At Risk grid polish** — rule threshold + plan + variance format; violation counts not company counts
+- [x] **Q&A chip persistence** — chips stay visible in Q&A mode, rotate on use
+- [x] **Submission intent detection** — Q&A panel detects "submit data" intent and auto-switches to submission mode
 - [x] **Plan Attainment table polish** — added Gross Margin, removed Overall column, vertical separators, staleness indicator, fixed undefined% bug
 - [x] **Dashboard UI polish** — removed threshold marker line, clickable company names, period label on bar chart
 - [x] **Onboarding system prompt rewrite** — proper data granularity handling (monthly/quarterly/annual/mixed)

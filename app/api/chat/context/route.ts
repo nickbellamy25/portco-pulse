@@ -153,6 +153,22 @@ export async function GET(req: NextRequest) {
     ? `Hi — use this chat to submit your data or ask questions about ${company.name}. Attach files, type numbers directly, or ask me anything about your KPIs and submissions.`
     : `You're viewing ${company.name}. Ask me anything about their data and submissions, or submit data on their behalf.`;
 
+  // Latest open period for this firm — used as placeholder hint in the context card
+  const latestOpenPeriod = db
+    .select()
+    .from(schema.periods)
+    .where(and(eq(schema.periods.firmId, user.firmId), eq(schema.periods.status, "open")))
+    .orderBy(desc(schema.periods.periodStart))
+    .limit(1)
+    .get();
+
+  let latestPeriodLabel: string | undefined;
+  if (latestOpenPeriod) {
+    const [y, m] = latestOpenPeriod.periodStart.split("-");
+    const dt = new Date(Number(y), Number(m) - 1, 1);
+    latestPeriodLabel = dt.toLocaleString("en-US", { month: "long", year: "numeric" });
+  }
+
   return NextResponse.json({
     companyId: company.id,
     token: (company as any).submissionToken as string,
@@ -166,5 +182,6 @@ export async function GET(req: NextRequest) {
     openingMessage,
     requiredDocs: (company as any).requiredDocs ?? "",
     requiredDocCadences: (company as any).requiredDocCadences ?? "",
+    latestPeriodLabel,
   });
 }

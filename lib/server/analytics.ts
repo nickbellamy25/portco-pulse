@@ -637,6 +637,7 @@ export type LatestSubmissionKpiViolation = {
   unit: string | null;
   variancePct: number;
   ragStatus: "amber" | "red";
+  rulePct: number; // threshold % that triggered this status
 };
 
 export type LatestSubmissionCompanyRag = {
@@ -796,13 +797,48 @@ export function getLatestSubmissionRagCount(firmId: string, companyIds: string[]
       if (!byKpi) continue;
 
       let planVal: number | null = null;
-      if (plan.granularity === "annual") {
-        const annual = byKpi.get(null) ?? null;
-        if (annual !== null) {
-          planVal = def.valueType === "percent" ? annual : annual / 12;
-        }
-      } else {
+      const defGranularity: string = (def as any).planGranularity ?? "annual_total";
+
+      // Backward compat: if plan was stored as monthly (old plan-level "monthly"), use byKpi.get(month)
+      if (plan.granularity === "monthly" && byKpi.has(month)) {
         planVal = byKpi.get(month) ?? null;
+      } else {
+        switch (defGranularity) {
+          case "monthly": {
+            planVal = byKpi.get(month) ?? null;
+            break;
+          }
+          case "quarterly_total": {
+            const q = Math.ceil(month / 3);
+            const qVal = byKpi.get(100 + q) ?? null;
+            if (qVal !== null) planVal = qVal / 3;
+            break;
+          }
+          case "quarterly_end": {
+            const q = Math.ceil(month / 3);
+            const qEndMonth = q * 3;
+            const qVal = byKpi.get(100 + q) ?? null;
+            // Only compare plan for the last month of the quarter
+            planVal = month === qEndMonth ? qVal : null;
+            break;
+          }
+          case "annual_end": {
+            planVal = byKpi.get(null) ?? null;
+            break;
+          }
+          case "annual_total":
+          case "annual":
+          default: {
+            const annual = byKpi.get(null) ?? null;
+            const isCurrency = def.valueType === "currency" || (def as any).unit === "$";
+            if (isCurrency && annual !== null) {
+              planVal = annual / 12;
+            } else {
+              planVal = annual;
+            }
+            break;
+          }
+        }
       }
       if (planVal === null || planVal === 0) continue;
 
@@ -823,6 +859,7 @@ export function getLatestSubmissionRagCount(firmId: string, companyIds: string[]
           unit: def.unit ?? null,
           variancePct,
           ragStatus: rag,
+          rulePct: rag === "red" ? amberPct : greenPct,
         });
         if (rag === "red") worstSeverity = "high";
         else if (worstSeverity !== "high") worstSeverity = "medium";
@@ -856,11 +893,9 @@ export function getLatestSubmissionRagCount(firmId: string, companyIds: string[]
 
 export type PortfolioChartData = {
   kpiOptions: Array<{ key: string; label: string; unit: string | null }>;
-  kpiThresholds: Record<string, Array<{ ruleType: string; value: number; severity: string }>>;
   companies: Array<{
     id: string;
     name: string;
-    hasAlert: boolean;
     latestValues: Record<string, number | null>;
     latestPeriodLabel: string | null;
   }>;
@@ -872,7 +907,7 @@ export type PortfolioChartData = {
 };
 
 export function getPortfolioChartData(firmId: string, companyIds: string[]): PortfolioChartData {
-  const empty: PortfolioChartData = { kpiOptions: [], kpiThresholds: {}, companies: [], trendPeriods: [] };
+  const empty: PortfolioChartData = { kpiOptions: [], companies: [], trendPeriods: [] };
   if (!companyIds.length) return empty;
 
   const allCompanies = db
@@ -882,25 +917,12 @@ export function getPortfolioChartData(firmId: string, companyIds: string[]): Por
     .orderBy(schema.companies.name)
     .all();
 
-  // Active alert company IDs
-  const alertRows = db
-    .select({ companyId: schema.alerts.companyId })
-    .from(schema.alerts)
-    .where(and(
-      eq(schema.alerts.firmId, firmId),
-      eq(schema.alerts.status, "active"),
-      inArray(schema.alerts.companyId, companyIds)
-    ))
-    .all();
-  const alertCompanyIds = new Set(alertRows.map((a) => a.companyId));
-
   // Last 13 periods (oldest→newest)
   const allPeriods = getAllPeriods(firmId).slice(0, 13).reverse();
   if (!allPeriods.length) {
     return {
       ...empty,
-      companies: allCompanies.map((c) => ({ id: c.id, name: c.name, hasAlert: alertCompanyIds.has(c.id), latestValues: {}, latestPeriodLabel: null })),
-      kpiThresholds: {},
+      companies: allCompanies.map((c) => ({ id: c.id, name: c.name, latestValues: {}, latestPeriodLabel: null })),
     };
   }
 
@@ -921,28 +943,6 @@ export function getPortfolioChartData(firmId: string, companyIds: string[]): Por
 
   const kpiOptions = kpiDefs.map((k) => ({ key: k.key, label: k.label, unit: k.unit ?? null }));
   const kpiDefIdToKey = new Map(kpiDefs.map((k) => [k.id, k.key]));
-
-  // Firm-wide threshold rules for these KPI defs (companyId IS NULL = firm-wide)
-  const thresholdRows = kpiDefs.length
-    ? db
-        .select()
-        .from(schema.thresholdRules)
-        .where(and(
-          eq(schema.thresholdRules.firmId, firmId),
-          isNull(schema.thresholdRules.companyId),
-          eq(schema.thresholdRules.active, true),
-          inArray(schema.thresholdRules.kpiDefinitionId, kpiDefs.map((k) => k.id))
-        ))
-        .all()
-    : [];
-
-  const kpiThresholds: Record<string, Array<{ ruleType: string; value: number; severity: string }>> = {};
-  for (const row of thresholdRows) {
-    const key = kpiDefIdToKey.get(row.kpiDefinitionId);
-    if (!key) continue;
-    if (!kpiThresholds[key]) kpiThresholds[key] = [];
-    kpiThresholds[key].push({ ruleType: row.ruleType, value: row.thresholdValue, severity: row.severity });
-  }
 
   // All submitted submissions for these companies/periods in one query
   const submissions = db
@@ -997,7 +997,7 @@ export function getPortfolioChartData(firmId: string, companyIds: string[]): Por
     const latestPeriodLabel = latestP
       ? new Date(latestP.periodStart + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
       : null;
-    return { id: c.id, name: c.name, hasAlert: alertCompanyIds.has(c.id), latestValues, latestPeriodLabel };
+    return { id: c.id, name: c.name, latestValues, latestPeriodLabel };
   });
 
   // Trend: last 12 months, per KPI per company
@@ -1019,7 +1019,7 @@ export function getPortfolioChartData(firmId: string, companyIds: string[]): Por
     };
   });
 
-  return { kpiOptions, kpiThresholds, companies, trendPeriods };
+  return { kpiOptions, companies, trendPeriods };
 }
 
 // ─── SUBMISSION TRACKING ─────────────────────────────────────────────────────
@@ -1291,13 +1291,6 @@ export function getPlanTracking(
 
 export type CompanyAnalyticsData = {
   company: schema.Company;
-  activeAlerts: Array<{
-    id: string;
-    kpiLabel: string;
-    severity: string;
-    message: string;
-    periodStart: string;
-  }>;
   keyMetrics: {
     totalSubmissions: number;
     avgMonthlyRevenueTtm: number | null;
@@ -1354,8 +1347,6 @@ export type CompanyAnalyticsData = {
     ragAmberPct: number;
     ragDirection: "higher_is_better" | "lower_is_better" | "any_variance";
   }>;
-  /** Threshold rules applicable to this company, keyed by KPI key */
-  thresholds: Record<string, Array<{ ruleType: string; value: number; severity: string }>>;
   /** All submission versions per period (YYYY-MM), sorted descending by version */
   submissionVersionsByPeriod: Record<string, Array<{
     version: number;
@@ -1398,37 +1389,6 @@ export function getCompanyAnalytics(
     );
 
   const kpiById = Object.fromEntries(kpiDefs.map((d) => [d.id, d]));
-
-  // Threshold rules: firm-wide (companyId IS NULL) + company-specific overrides
-  const thresholdRows = kpiDefs.length
-    ? db
-        .select()
-        .from(schema.thresholdRules)
-        .where(
-          and(
-            eq(schema.thresholdRules.firmId, firmId),
-            eq(schema.thresholdRules.active, true),
-            inArray(
-              schema.thresholdRules.kpiDefinitionId,
-              kpiDefs.map((k) => k.id)
-            )
-          )
-        )
-        .all()
-        .filter((r) => r.companyId === null || r.companyId === companyId)
-    : [];
-
-  const thresholds: Record<string, Array<{ ruleType: string; value: number; severity: string }>> = {};
-  for (const row of thresholdRows) {
-    const def = kpiById[row.kpiDefinitionId];
-    if (!def) continue;
-    if (!thresholds[def.key]) thresholds[def.key] = [];
-    thresholds[def.key].push({
-      ruleType: row.ruleType,
-      value: row.thresholdValue,
-      severity: row.severity,
-    });
-  }
 
   // Get submitted submissions for this company
   const submissionsQuery = db
@@ -1579,40 +1539,6 @@ export function getCompanyAnalytics(
 
   const avgMonthlyRevenueTtm = ttmAvg(ttmData.map((t) => t.revenue));
   const avgMonthlyEbitdaTtm = ttmAvg(ttmData.map((t) => t.ebitda));
-
-  // Active alerts
-  const alertRows = db
-    .select()
-    .from(schema.alerts)
-    .where(
-      and(
-        eq(schema.alerts.firmId, firmId),
-        eq(schema.alerts.companyId, companyId),
-        eq(schema.alerts.status, "active")
-      )
-    )
-    .orderBy(desc(schema.alerts.createdAt))
-    .limit(20)
-    .all();
-
-  // Batch-fetch periods for alerts
-  const alertPeriodIds = [...new Set(alertRows.map(a => a.periodId))];
-  const alertPeriods = alertPeriodIds.length > 0
-    ? db.select().from(schema.periods).where(inArray(schema.periods.id, alertPeriodIds)).all()
-    : [];
-  const alertPeriodMap = new Map(alertPeriods.map(p => [p.id, p]));
-
-  const activeAlerts = alertRows.map((a) => {
-    const def = kpiById[a.kpiDefinitionId];
-    const period = alertPeriodMap.get(a.periodId);
-    return {
-      id: a.id,
-      kpiLabel: def?.label ?? "KPI",
-      severity: a.severity,
-      message: a.message ?? "",
-      periodStart: period?.periodStart ?? "",
-    };
-  });
 
   // ── Plan data ──────────────────────────────────────────────────────────────
   // Load latest submitted plan per fiscal year for this company
@@ -1954,7 +1880,6 @@ export function getCompanyAnalytics(
 
   return {
     company,
-    activeAlerts,
     keyMetrics: {
       totalSubmissions,
       avgMonthlyRevenueTtm,
@@ -1963,7 +1888,6 @@ export function getCompanyAnalytics(
     },
     trendData,
     rawData,
-    thresholds,
     submissionVersionsByPeriod,
   };
 }

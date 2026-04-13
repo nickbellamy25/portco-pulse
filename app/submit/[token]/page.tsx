@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { getCompanyByToken, getFirm } from "@/lib/server/analytics";
 import { deriveSessionKey, loadHistory } from "@/lib/chat/session";
 import { ChatInterface } from "./_components/ChatInterface";
@@ -123,7 +123,22 @@ export default async function SubmitPage({
   }
 
   // Format the period param for the pre-filled context period input (human-readable)
-  const contextPeriod = periodParam ? formatPeriodLabel(periodParam) : undefined;
+  // If no period param, use the latest open period as a hint for the placeholder
+  let contextPeriod: string | undefined;
+  if (periodParam) {
+    contextPeriod = formatPeriodLabel(periodParam);
+  } else {
+    const latestOpen = db
+      .select()
+      .from(schema.periods)
+      .where(and(eq(schema.periods.firmId, company.firmId), eq(schema.periods.status, "open")))
+      .orderBy(desc(schema.periods.periodStart))
+      .limit(1)
+      .get();
+    if (latestOpen) {
+      contextPeriod = formatPeriodLabel(latestOpen.periodStart.slice(0, 7));
+    }
+  }
 
   const headerSubtitle =
     chatMode === "onboarding" ? `Historical Data Collection · ${firmName}` : "Data Submission";

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { sendMonthlyDigestEmail } from "@/lib/server/email";
+import { getLatestSubmissionRagCount } from "@/lib/server/analytics";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -62,11 +63,9 @@ export async function GET(req: NextRequest) {
       submittedCount = submissions.filter((s) => s.status === "submitted").length;
     }
 
-    const activeAlerts = db
-      .select()
-      .from(schema.alerts)
-      .where(and(eq(schema.alerts.firmId, firm.id), eq(schema.alerts.status, "active")))
-      .all().length;
+    const companyIds = companies.map((c) => c.id);
+    const ragSummary = getLatestSubmissionRagCount(firm.id, companyIds);
+    const activeAlerts = ragSummary.offTrackCount + ragSummary.atRiskCount;
 
     await sendMonthlyDigestEmail({
       to: recipients,

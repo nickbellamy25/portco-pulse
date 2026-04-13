@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { format } from "date-fns";
-import { TrendingUp, Download, DollarSign, ClipboardList, Wallet, MessageSquare, Pencil, Check, X, FileText, ChevronDown, ChevronRight, Info } from "lucide-react";
+import { TrendingUp, Download, DollarSign, Wallet, MessageSquare, Pencil, Check, X, FileText, ChevronDown, ChevronRight, Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TrendChart } from "@/components/charts/trend-chart";
@@ -1277,8 +1277,7 @@ export function AnalyticsClient({
               return (
                 <div className="mb-6">
                   <h2 className="font-semibold text-sm mb-3">Key Metrics{hasPeriod ? "" : " Summary"}</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard label="Total Submissions" value={km.totalSubmissions} iconBg="bg-blue-50" icon={<ClipboardList className="h-5 w-5 text-blue-500" />} />
+                  <div className="grid grid-cols-3 gap-4">
                     <StatCard
                       label={hasPeriod ? "Revenue" : "Avg Monthly Revenue (TTM)"}
                       value={fmt(hasPeriod ? pRev : km.avgMonthlyRevenueTtm, "$")}
@@ -1320,7 +1319,7 @@ export function AnalyticsClient({
                   )
                 : latestValues;
               return Object.keys(displayValues).length > 0
-                ? <KpiHealthChart thresholds={analytics.thresholds} latestValues={displayValues} />
+                ? <KpiHealthChart latestValues={displayValues} />
                 : null;
             })()}
           </TabsContent>

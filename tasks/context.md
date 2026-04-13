@@ -523,3 +523,9 @@ Use urlCompanyName (looked up from companyList via companyIdFromUrl) for context
 ## Onboarding — Data Granularity
 
 [2026-04-13] | Onboarding system prompt didn't handle mixed-granularity data correctly — could fabricate monthly from annual | Onboarding data rule: NEVER fabricate data at finer granularity than provided. Annual totals go to last month of fiscal year (e.g., Dec for calendar FY). Never divide by 12 to create fake monthly data. System prompt in `lib/chat/system-prompt.ts` covers: monthly, quarterly, semi-annual, annual, multi-year, mixed granularity, non-calendar fiscal years.
+
+[2026-04-13] | Dashboard getLatestSubmissionRagCount() only handled 2 plan granularity cases (annual, monthly) | Plan value resolution must handle ALL 6 granularity types: monthly, quarterly_total, quarterly_end, annual_end, annual_total, annual. Always match the logic in getPlanValue() from getCompanyAnalytics(). The per-KPI `planGranularity` field takes priority over plan-level `granularity`.
+
+[2026-04-13] | KpiHealthChart threshold fallback used different RAG logic than rest of app | All RAG evaluation must use plan-based variance only (computeRagPct). No fallback to absolute thresholds. Show "No plan configured" when no plan exists.
+
+[2026-04-13] | Q&A chips disappeared after first user message | In Q&A mode (no companyId), chips must persist — they rotate as used. Only suppress after first message in submission mode.

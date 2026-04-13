@@ -499,3 +499,27 @@ Use urlCompanyName (looked up from companyList via companyIdFromUrl) for context
 - **Cash flow**: cash flow statement/from, operating/investing/financing activities, beginning/ending cash, net change in cash, depreciation & amortization, capital expenditure, proceeds from, repayment of, changes in working capital
 - **Investor update**: investor/portfolio update, dear investor/partner, quarterly update/review, management commentary/discussion
 | This list must be kept in sync with DOC_TYPE_STRONG in app/api/upload/route.ts. When adding new patterns, classify as strong (unique to statement type) or weak (appears in casual context).
+
+---
+
+## Plan Attainment / KPI Aggregation
+
+[2026-04-13] | Gross margin YTD was summed instead of averaged — produced nonsensical 150%+ values | For percentage KPIs in plan attainment, YTD actual = average of monthly values, not sum. Annual plan target for % KPIs is used directly (no prorating). Rule: $ KPIs sum, % KPIs average, # KPIs take last value.
+
+---
+
+## Dashboard Alerts
+
+[2026-04-13] | Dashboard alerts were using old threshold_rules system — showed "Off Track if < $500K" style alerts | Rewrote `getLatestSubmissionRagCount()` to use RAG (% variance from plan). Companies without a plan are excluded from alerts. `evaluateAlerts()` in `lib/server/alerts.ts` is dead code (never called). `sendRagAlertEmail()` in `actions.ts` is the active alert email system (already RAG-based). `threshold_rules` and `alerts` tables remain in DB but are no longer read for display.
+
+---
+
+## UI — Clickable Text Style
+
+[2026-04-13] | Company names on dashboard were made permanently blue (like links) — looked out of place | Clickable text should use default color (black/inherit) with blue on hover only. No underline. Don't make clickable text permanently blue unless it's an explicit hyperlink in body text.
+
+---
+
+## Onboarding — Data Granularity
+
+[2026-04-13] | Onboarding system prompt didn't handle mixed-granularity data correctly — could fabricate monthly from annual | Onboarding data rule: NEVER fabricate data at finer granularity than provided. Annual totals go to last month of fiscal year (e.g., Dec for calendar FY). Never divide by 12 to create fake monthly data. System prompt in `lib/chat/system-prompt.ts` covers: monthly, quarterly, semi-annual, annual, multi-year, mixed granularity, non-calendar fiscal years.

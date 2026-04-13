@@ -1,8 +1,8 @@
 # Handover — PortCo Pulse
 
-## Current state (as of 2026-04-10)
+## Current state (as of 2026-04-13)
 
-The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 polish continues. Latest session: document type detection rewritten to use financial line-item recognition instead of just document titles. Also completed Pulse AI Q&A-first architecture fix in prior session.
+The app is fully functional as a local prototype. All Phase 1 + Phase 2 features are complete. Phase 3 polish continues. Latest session: major dashboard and UI polish pass — removed threshold marker from bar chart, added clickable company names, rewrote dashboard alerts to use RAG (% variance from plan) instead of absolute threshold rules, added Gross Margin to Plan Attainment table, added per-KPI staleness indicator, onboarding system prompt rewrite, and onboarding reminder chip on Pulse AI panel.
 
 ---
 
@@ -610,9 +610,48 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 
 ---
 
-## What's next — Phase 3 remaining
+### Session 2026-04-13 — Dashboard & UI polish, onboarding rewrite, RAG alert consolidation
 
-**All changes from sessions 2026-04-07 and 2026-04-08 are committed.**
+**Dashboard & UI Polish:**
+1. Removed firm-wide threshold marker (dashed red line + label) from Portfolio Performance bar chart — removed SEVERITY_COLOR, RULE_LABEL, SEVERITY_LABEL constants, ReferenceLine import
+2. Added period label to bar chart heading: "Latest Submission · Feb 2026" (derived from most common period across companies)
+3. Added left border to Pulse AI chat panel (`border-l border-border` on expanded panel container)
+4. Made company names clickable on dashboard — bar chart Y-axis, trend legend, alert cards all link to `/analytics?company={id}`. Default black text, blue on hover only (no underline)
+5. Removed redundant date displays on Company Analytics — removed "Showing April 2026" next to dropdown and "Viewing Apr 26" badge above chart
+6. Added Gross Margin to Plan Attainment table between Revenue and EBITDA. Removed "Overall" column. Added vertical separators between KPI sections. Fixed `undefined%` bug for null percent values. Removed "(through Apr)" from title since Through column exists per row
+7. Added per-KPI staleness indicator — when a KPI's latest data is from an earlier month than the company's latest submission, cells render italic at 70% opacity with hover tooltip "Data through Feb only"
+
+**Onboarding System:**
+8. Added onboarding reminder chip to Pulse AI chat panel — appears when a company with pending/in_progress onboarding is selected on Analytics or Company Settings. Created `/api/companies/onboarding-remind` endpoint. Updated `/api/companies` to return `onboardingStatus`
+9. Rewrote onboarding system prompt for proper data granularity handling — monthly, quarterly, semi-annual, annual, multi-year, mixed granularity, non-calendar fiscal years. Core rule: never fabricate data at finer granularity than provided
+10. Updated onboarding UI hint — changed to "All data will be processed unless otherwise noted" (opposite of periodic's "Only data from periods you list will be collected")
+
+**Alert System Consolidation (RAG):**
+11. Rewrote dashboard alerts to use RAG (% variance from plan) instead of absolute threshold rules. Rewrote `getLatestSubmissionRagCount()` in `lib/server/analytics.ts` and updated `LatestSubmissionKpiViolation` type. Alert cards now show "Off Track: -23.5% vs plan" instead of "Off Track if < $500K". Companies without a plan are excluded from alerts
+12. Updated dashboard alert card UI — shows KPI actual value + variance % from plan with color coding
+
+**Audit Findings:**
+- `evaluateAlerts()` in `lib/server/alerts.ts` is dead code (never called)
+- `sendRagAlertEmail()` in `actions.ts` is the active alert email system (already RAG-based)
+- `threshold_rules` and `alerts` tables left in DB but no longer read for display
+- Company Analytics `activeAlerts` reads from `alerts` table but is not rendered in UI
+
+**Files changed:**
+- `components/charts/portfolio-chart.tsx` — removed threshold line, added period label, clickable company names
+- `components/layout/PersistentChatPanel.tsx` — left border, onboarding chip
+- `app/(app)/analytics/client.tsx` — removed redundant date label
+- `components/charts/trend-chart.tsx` — removed "Viewing" badge
+- `app/(app)/dashboard/page.tsx` — clickable company names, RAG-based alert cards
+- `components/dashboard/plan-attainment.tsx` — added Gross Margin column, separators, staleness indicator
+- `lib/server/analytics.ts` — added grossMargin to plan summary, rewrote getLatestSubmissionRagCount to RAG
+- `lib/chat/system-prompt.ts` — rewrote onboarding period handling
+- `app/submit/[token]/_components/ChatInterface.tsx` — updated onboarding hint text
+- `app/api/companies/route.ts` — added onboardingStatus to response
+- `app/api/companies/onboarding-remind/route.ts` — new endpoint
+
+---
+
+## What's next — Phase 3 remaining
 
 **Phase 3 remaining:**
 1. Wire company-specific KPIs into chat submission
@@ -622,6 +661,13 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 5. Blocklist mode for member access scopes
 6. **Verify document badge fix** — after hard refresh, confirm Brighton's chat card shows BS/IS/CF green (matching Submission Tracking)
 7. **End-to-end testing needed** — firm-side submission routing, per-page chat persistence, drag-drop file submission
+8. **Verify build compiles cleanly** — TypeScript check couldn't complete last session
+9. User mentioned a "second change" related to Revenue/Gross Margin/EBITDA being the key metrics — first change (plan attainment table) done, second not yet discussed
+
+**Audit items (low priority):**
+- `evaluateAlerts()` in `lib/server/alerts.ts` is dead code — consider removing
+- `threshold_rules` and `alerts` tables are no longer read for display — consider deprecation plan
+- Company Analytics `activeAlerts` reads from `alerts` table but is not rendered — clean up or wire into UI
 
 **Demo prep remaining:**
 - Test full drag-drop submission flow end-to-end (Brighton XLSX, Apex TXT, Culinary PDF)
@@ -679,6 +725,11 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 - **Document detection by line items**: Detection uses DOC_TYPE_STRONG (structural keywords unique to each statement type) + DOC_TYPE_WEAK (generic financial terms). Requires 2+ strong OR 1 strong + 1 weak. Weak-only never triggers. This prevents informal emails from being misclassified.
 - **Raw PDF fallback detection**: When pdf-parse fails, buffer.toString("latin1") extracts raw PDF stream text for detection before falling back to undetected vision.
 - **CSV detection**: CSVs now run through detectDocumentTypes (previously no detection).
+- **Dashboard alerts use RAG**: Alerts are now based on % variance from plan (not absolute threshold rules). Companies without a plan are excluded. `getLatestSubmissionRagCount()` is the source. Old `evaluateAlerts()` is dead code.
+- **Clickable company names**: Dashboard bar chart Y-axis, trend legend, and alert cards link to `/analytics?company={id}`. Default black text, blue on hover only — never permanently blue.
+- **Plan Attainment table**: Shows Revenue, Gross Margin, EBITDA (3 KPIs). No "Overall" column. Vertical separators between KPI sections. Per-KPI staleness indicator (italic + 70% opacity + tooltip).
+- **Gross Margin YTD**: Averaged (not summed) because it's a percentage KPI. Annual plan target used directly (no prorating).
+- **Onboarding data granularity**: Never fabricate finer granularity than provided. Annual totals → last month of fiscal year. Never divide by 12 to create fake monthly data.
 
 ---
 

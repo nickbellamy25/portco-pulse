@@ -546,7 +546,7 @@ export function ChatInterface({
                 placeholder="e.g. March 2025, or Q1 2025"
                 className="w-full rounded-md border border-border bg-background px-2.5 py-1 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
-              <span className="text-[10px] text-muted-foreground">{contextDataTypes.has("onboarding") ? "List the range of historical periods, e.g. Jan 2023 – Dec 2025." : "Only data from periods you list will be collected."}</span>
+              <span className="text-[10px] text-muted-foreground">{contextDataTypes.has("onboarding") ? "All data will be processed unless otherwise noted." : "Only data from periods you list will be collected."}</span>
             </div>
 
           </div>

@@ -42,10 +42,20 @@ function RagPill({ status }: { status: RagStatus | null }) {
 
 function KpiCell({
   data,
+  isPercent = false,
+  separator = false,
+  companyLatestMonth,
 }: {
   data: CompanyPlanSummary["revenue"];
+  isPercent?: boolean;
+  separator?: boolean;
+  companyLatestMonth?: number | null;
 }) {
-  if (!data) return <td className="px-4 py-3 text-right text-muted-foreground text-sm" colSpan={3}>—</td>;
+  const borderCls = separator ? " border-r border-border/40" : "";
+  if (!data) return <td className={`px-4 py-3 text-right text-muted-foreground text-sm${borderCls}`} colSpan={3}>—</td>;
+
+  const isStale = companyLatestMonth != null && data.thruMonth != null && data.thruMonth < companyLatestMonth;
+  const staleTitle = isStale ? `Data through ${MONTHS[(data.thruMonth ?? 1) - 1]} only` : undefined;
 
   const varPctColor =
     data.ytdVariancePct === null
@@ -56,13 +66,13 @@ function KpiCell({
 
   return (
     <>
-      <td className="px-3 py-3 text-right tabular-nums text-sm font-medium">
-        {fmtCompact(data.ytdActual)}
+      <td className={`px-3 py-3 text-right tabular-nums text-sm font-medium${isStale ? " italic opacity-70" : ""}`} title={staleTitle}>
+        {isPercent ? (data.ytdActual != null ? `${data.ytdActual.toFixed(1)}%` : "—") : fmtCompact(data.ytdActual)}
       </td>
-      <td className="px-3 py-3 text-right tabular-nums text-sm text-muted-foreground">
-        {fmtCompact(data.ytdPlan)}
+      <td className={`px-3 py-3 text-right tabular-nums text-sm text-muted-foreground${isStale ? " italic opacity-70" : ""}`} title={staleTitle}>
+        {isPercent ? (data.ytdPlan != null ? `${data.ytdPlan.toFixed(1)}%` : "—") : fmtCompact(data.ytdPlan)}
       </td>
-      <td className={`px-3 py-3 text-right tabular-nums text-xs ${varPctColor}`}>
+      <td className={`px-3 py-3 text-right tabular-nums text-xs ${varPctColor}${borderCls}${isStale ? " italic opacity-70" : ""}`} title={staleTitle}>
         {fmtPct(data.ytdVariancePct)}
       </td>
     </>
@@ -80,9 +90,8 @@ export function PlanAttainmentSection({ planSummary }: Props) {
         <div>
           <h2 className="font-semibold text-sm">
             Plan Attainment — {fiscalYear} YTD
-            {monthLabel && <span className="text-muted-foreground font-normal ml-1">(through {monthLabel})</span>}
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Revenue and EBITDA vs approved annual plan</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Revenue, Gross Margin and EBITDA vs approved annual plan</p>
         </div>
 
         {/* RAG distribution pills */}
@@ -111,24 +120,28 @@ export function PlanAttainmentSection({ planSummary }: Props) {
           <thead>
             <tr className="border-b border-border bg-muted/30">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground sticky left-0 bg-muted/30 min-w-[160px]">Company</th>
-              <th className="text-center px-4 py-3 font-medium text-muted-foreground" colSpan={3}>
+              <th className="text-center px-4 py-3 font-medium text-muted-foreground border-r border-border/40" colSpan={3}>
                 Revenue YTD
               </th>
-              <th className="text-center px-4 py-3 font-medium text-muted-foreground" colSpan={3}>
+              <th className="text-center px-4 py-3 font-medium text-muted-foreground border-r border-border/40" colSpan={3}>
+                Gross Margin YTD
+              </th>
+              <th className="text-center px-4 py-3 font-medium text-muted-foreground border-r border-border/40" colSpan={3}>
                 EBITDA YTD
               </th>
-              <th className="text-center px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Overall</th>
               <th className="px-4 py-3 font-medium text-muted-foreground whitespace-nowrap text-right">Through</th>
             </tr>
             <tr className="border-b border-border bg-muted/10">
               <th className="sticky left-0 bg-muted/10" />
               {["Actual", "Plan", "Var%"].map((h) => (
-                <th key={`rev-${h}`} className="px-3 py-2 text-right text-xs font-medium text-muted-foreground/70">{h}</th>
+                <th key={`rev-${h}`} className={`px-3 py-2 text-right text-xs font-medium text-muted-foreground/70${h === "Var%" ? " border-r border-border/40" : ""}`}>{h}</th>
               ))}
               {["Actual", "Plan", "Var%"].map((h) => (
-                <th key={`ebitda-${h}`} className="px-3 py-2 text-right text-xs font-medium text-muted-foreground/70">{h}</th>
+                <th key={`gm-${h}`} className={`px-3 py-2 text-right text-xs font-medium text-muted-foreground/70${h === "Var%" ? " border-r border-border/40" : ""}`}>{h}</th>
               ))}
-              <th />
+              {["Actual", "Plan", "Var%"].map((h) => (
+                <th key={`ebitda-${h}`} className={`px-3 py-2 text-right text-xs font-medium text-muted-foreground/70${h === "Var%" ? " border-r border-border/40" : ""}`}>{h}</th>
+              ))}
               <th />
             </tr>
           </thead>
@@ -143,15 +156,9 @@ export function PlanAttainmentSection({ planSummary }: Props) {
                     {c.companyName}
                   </Link>
                 </td>
-                <KpiCell data={c.revenue} />
-                <KpiCell data={c.ebitda} />
-                <td className="px-4 py-3 text-center">
-                  {c.hasPlan ? (
-                    <RagPill status={c.overallRag} />
-                  ) : (
-                    <span className="text-xs text-muted-foreground italic">No plan</span>
-                  )}
-                </td>
+                <KpiCell data={c.revenue} separator companyLatestMonth={c.latestMonth} />
+                <KpiCell data={c.grossMargin} isPercent separator companyLatestMonth={c.latestMonth} />
+                <KpiCell data={c.ebitda} separator companyLatestMonth={c.latestMonth} />
                 <td className="px-4 py-3 text-right text-xs text-muted-foreground whitespace-nowrap">
                   {c.latestMonth ? MONTHS[c.latestMonth - 1] : "—"}
                 </td>

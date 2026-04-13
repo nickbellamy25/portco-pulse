@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -13,28 +14,8 @@ import {
   ResponsiveContainer,
   Cell,
   LabelList,
-  ReferenceLine,
 } from "recharts";
 import type { PortfolioChartData } from "@/lib/server/analytics";
-
-const SEVERITY_COLOR: Record<string, string> = {
-  high: "#ef4444",
-  medium: "#f59e0b",
-  low: "#eab308",
-};
-
-const RULE_LABEL: Record<string, string> = {
-  lt: "Min",
-  lte: "Min",
-  gt: "Max",
-  gte: "Max",
-};
-
-const SEVERITY_LABEL: Record<string, string> = {
-  high: "Off Track",
-  medium: "At Risk",
-  low: "On Track",
-};
 
 const COMPANY_COLORS = [
   "#3b82f6", // blue
@@ -119,20 +100,30 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
 
   // Snapshot: sorted descending, nulls at bottom
   const snapshotData = chartData.companies
-    .map((c) => ({ name: c.name, value: getLatest(c), hasAlert: c.hasAlert, periodLabel: c.latestPeriodLabel }))
+    .map((c) => ({ id: c.id, name: c.name, value: getLatest(c), hasAlert: c.hasAlert, periodLabel: c.latestPeriodLabel }))
     .sort((a, b) => {
       if (a.value === null && b.value === null) return 0;
       if (a.value === null) return 1;
       if (b.value === null) return -1;
       return b.value - a.value;
-    }) as Array<{ name: string; value: number | null; hasAlert: boolean }>;
+    }) as Array<{ id: string; name: string; value: number | null; hasAlert: boolean }>;
 
   const snapshotWithData = snapshotData.filter((d) => d.value !== null) as Array<{
+    id: string;
     name: string;
     value: number;
     hasAlert: boolean;
     periodLabel: string | null;
   }>;
+
+  const snapshotPeriodLabel = (() => {
+    const labels = snapshotWithData.map(d => d.periodLabel).filter(Boolean);
+    if (!labels.length) return null;
+    // Most common label (most companies report the same period)
+    const counts = new Map<string, number>();
+    labels.forEach(l => counts.set(l!, (counts.get(l!) ?? 0) + 1));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  })();
 
   // Trend: use simple indexed keys (c0, c1...) to avoid UUID issues in Recharts dataKey
   const trendDataAbsolute = chartData.trendPeriods.map((p) => {
@@ -173,13 +164,25 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
     chartData.companies.some((_, i) => p[`c${i}`] != null)
   );
 
+  const router = useRouter();
+  const companyIdByName = new Map(snapshotWithData.map(d => [d.name, d.id]));
+
   const snapshotHeight = Math.max(snapshotWithData.length * 38 + 80, 140);
 
   const renderCompanyTick = ({ x, y, payload }: any) => {
     const name: string = payload.value ?? "";
     const display = name.length > 24 ? name.slice(0, 24) + "…" : name;
+    const cId = companyIdByName.get(name);
     return (
-      <text x={x} y={y} dy={4} textAnchor="end" fill="#6b7280" fontSize={11}>{display}</text>
+      <text
+        x={x} y={y} dy={4} textAnchor="end" fill="#6b7280" fontSize={11}
+        style={{ cursor: "pointer" }}
+        onClick={() => cId && router.push(`/analytics?company=${cId}`)}
+        onMouseEnter={(e) => { e.currentTarget.setAttribute("fill", "#3b82f6"); }}
+        onMouseLeave={(e) => { e.currentTarget.setAttribute("fill", "#6b7280"); }}
+      >
+        {display}
+      </text>
     );
   };
 
@@ -212,14 +215,14 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
       {/* Snapshot — latest period horizontal bar */}
       <div className="mb-8">
         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-3">
-          Latest Submission
+          Latest Submission{snapshotPeriodLabel ? ` · ${snapshotPeriodLabel}` : ""}
         </p>
         {hasSnapshotData ? (
           <ResponsiveContainer width="100%" height={snapshotHeight}>
             <BarChart
               layout="vertical"
               data={snapshotWithData}
-              margin={{ top: 0, right: 72, left: 0, bottom: 60 }}
+              margin={{ top: 0, right: 72, left: 0, bottom: 10 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
               <XAxis
@@ -249,43 +252,6 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
                   <Cell key={i} fill="#3b82f6" />
                 ))}
               </Bar>
-              {(chartData.kpiThresholds[activeKpi] ?? []).map((t, i) => {
-                const color = SEVERITY_COLOR[t.severity] ?? "#6b7280";
-                const formatted = fmtVal(t.value, activeUnit);
-                const ruleLabel = RULE_LABEL[t.ruleType];
-                return (
-                  <ReferenceLine
-                    key={i}
-                    x={t.value}
-                    stroke="transparent"
-                    label={(props: any) => {
-                      const { viewBox } = props;
-                      if (!viewBox) return null;
-                      const lx = viewBox.x;
-                      const top = viewBox.y;
-                      const bottom = viewBox.y + viewBox.height;
-                      return (
-                        <g>
-                          {/* single continuous dashed line top → below axis */}
-                          <line
-                            x1={lx} y1={top}
-                            x2={lx} y2={bottom + 30}
-                            stroke={color}
-                            strokeDasharray="4 3"
-                            strokeWidth={1.5}
-                          />
-                          <text x={lx + 5} y={bottom + 42} fontSize={11} fill={color} opacity={0.9}>
-                            Firm-Wide Threshold — {SEVERITY_LABEL[t.severity] ?? t.severity}
-                          </text>
-                          <text x={lx + 5} y={bottom + 57} fontSize={12} fontWeight="700" fill={color}>
-                            {formatted}
-                          </text>
-                        </g>
-                      );
-                    }}
-                  />
-                );
-              })}
             </BarChart>
           </ResponsiveContainer>
         ) : (
@@ -359,7 +325,12 @@ export function PortfolioPerformanceSection({ chartData }: Props) {
                     className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
                     style={{ background: COMPANY_COLORS[i % COMPANY_COLORS.length] }}
                   />
-                  <span className="text-xs text-muted-foreground">{c.name}</span>
+                  <span
+                    className="text-xs text-muted-foreground hover:text-blue-600 cursor-pointer"
+                    onClick={() => router.push(`/analytics?company=${c.id}`)}
+                  >
+                    {c.name}
+                  </span>
                 </div>
               ))}
             </div>

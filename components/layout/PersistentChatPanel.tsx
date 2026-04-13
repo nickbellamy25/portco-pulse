@@ -154,7 +154,7 @@ function ChatPanelExpanded({
   const [companyLoading, setCompanyLoading] = useState(false);
 
   // Company list for picker
-  const [companyList, setCompanyList] = useState<Array<{ id: string; name: string }>>([]);
+  const [companyList, setCompanyList] = useState<Array<{ id: string; name: string; onboardingStatus: string | null }>>([]);
   const [showCompanyPicker, setShowCompanyPicker] = useState(false);
 
   // Pending files/text from pre-selection flow
@@ -292,9 +292,23 @@ function ChatPanelExpanded({
         ...SUBMISSIONS_CHIPS,
       ];
     }
-    if (isAnalytics && urlCompanyName) return COMPANY_CHIPS_FN(urlCompanyName);
+    if (isAnalytics && urlCompanyName) {
+      const chips = COMPANY_CHIPS_FN(urlCompanyName);
+      const comp = companyList.find(c => c.id === companyIdFromUrl);
+      if (comp?.onboardingStatus === "pending" || comp?.onboardingStatus === "in_progress") {
+        chips.unshift(`Send onboarding reminder to ${urlCompanyName}`);
+      }
+      return chips;
+    }
     if (isAnalytics) return DASHBOARD_CHIPS.slice(0, 2);
-    if (isCompanySettings && urlCompanyName) return COMPANY_SETTINGS_CHIPS_FN(urlCompanyName);
+    if (isCompanySettings && urlCompanyName) {
+      const chips = COMPANY_SETTINGS_CHIPS_FN(urlCompanyName);
+      const comp = companyList.find(c => c.id === companyIdFromUrl);
+      if (comp?.onboardingStatus === "pending" || comp?.onboardingStatus === "in_progress") {
+        chips.unshift(`Send onboarding reminder to ${urlCompanyName}`);
+      }
+      return chips;
+    }
     if (isCompanySettings) return DASHBOARD_CHIPS.slice(0, 2);
     if (isFirmSettings) return ["How do firmwide KPI settings and overrides work?", "What are the current firmwide KPI thresholds?"];
     return [];
@@ -305,7 +319,7 @@ function ChatPanelExpanded({
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-background">
+    <div className="flex flex-col flex-1 min-h-0 bg-background border-l border-border">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
@@ -396,6 +410,19 @@ function ChatPanelExpanded({
               }
               if (chip === "Send reminders to companies with no submission this period" && outstandingData) {
                 // TODO: implement reminder confirmation flow
+                return true;
+              }
+              if (chip.startsWith("Send onboarding reminder to ") && companyIdFromUrl) {
+                fetch("/api/companies/onboarding-remind", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ companyId: companyIdFromUrl }),
+                })
+                  .then(r => r.json())
+                  .then(data => {
+                    alert(data.message || "Onboarding reminder sent!");
+                  })
+                  .catch(() => alert("Failed to send onboarding reminder"));
                 return true;
               }
               return false; // not intercepted, let ChatInterface handle it

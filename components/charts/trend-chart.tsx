@@ -159,12 +159,6 @@ export function TrendChart({ data, kpiMeta, highlightPeriod, investmentPeriod }:
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Selected period badge */}
-          {highlightLabel && (
-            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-200">
-              Viewing {highlightLabel}
-            </span>
-          )}
           {/* Time range pills */}
           <div className="flex items-center gap-0.5 bg-muted/60 rounded-lg p-1">
             {TIME_RANGE_OPTIONS.map((opt) => (

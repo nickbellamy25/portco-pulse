@@ -39,9 +39,14 @@ Build a production-ready PE portfolio monitoring platform that a real PE firm co
 
 - [ ] **Wire company-specific KPIs into chat submission** — custom KPIs added in Company Settings should appear in the operator's chat submission flow
 - [ ] **Submission Tracking UX review** — detailed review pass; fix any rough edges in the status matrix
+- [x] **Dashboard alerts consolidated to RAG** — rewrote from absolute threshold rules to % variance from plan; old `evaluateAlerts()` is dead code
+- [x] **Plan Attainment table polish** — added Gross Margin, removed Overall column, vertical separators, staleness indicator, fixed undefined% bug
+- [x] **Dashboard UI polish** — removed threshold marker line, clickable company names, period label on bar chart
+- [x] **Onboarding system prompt rewrite** — proper data granularity handling (monthly/quarterly/annual/mixed)
 - [ ] **Fix variance coloring for lower-is-better KPIs** — positive variance should be red for CapEx, Churn Rate, etc. (currently always green)
 - [ ] **Blocklist mode for member access scopes** — currently only allowlist (include specific companies); need blocklist (exclude specific companies)
 - [ ] **Chat submission** — handle edge case: operator uploads combined financials that covers multiple statement types (logic partially exists via `combined_financials` doc type)
+- [ ] **Verify build compiles cleanly** — TypeScript check couldn't complete in the 2026-04-13 session
 - [x] **Chat pane polish** — chips at bottom on all pages, remove company badge from header, collapse on navigation, assistant bubble full-width, tab color consistency, system prompt sort/conclusion fixes, dynamic reminder chip on Submission Tracking (live outstanding companies, confirmation flow, wired into sendRemindersAction)
 - [x] **Chat submission card fixes** — card persists after submit, company name header, compact sizing, documents/missing banners on submitted cards, prompt chips reappear after submission, drag highlight fix
 - [x] **Document badge row on submission cards** — always shows BS/IS/CF/IU, interactive toggle, linked to financial_documents DB, matches Submission Tracking style

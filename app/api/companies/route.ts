@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   const companies = db
-    .select({ id: schema.companies.id, name: schema.companies.name })
+    .select({ id: schema.companies.id, name: schema.companies.name, onboardingStatus: schema.companies.onboardingStatus })
     .from(schema.companies)
     .where(eq(schema.companies.firmId, firmId))
     .orderBy(asc(schema.companies.name))

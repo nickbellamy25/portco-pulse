@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getPortfolioDashboardData, getCompanyFilterOptions, getPortfolioChartData, getAccessibleCompanyIds, getPortfolioPlanSummary, getLatestSubmissionRagCount } from "@/lib/server/analytics";
+import Link from "next/link";
 import { Building2, AlertTriangle, Clock, Calendar } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ExportDataButton } from "@/components/dashboard/export-button";
@@ -109,7 +110,6 @@ export default async function DashboardPage({
 
         const severityLabel: Record<string, string> = { high: "Off Track", medium: "At Risk", low: "On Track" };
         const severityColor: Record<string, string> = { high: "text-red-600", medium: "text-amber-600", low: "text-green-600" };
-        const opLabel: Record<string, string> = { lt: "<", lte: "≤", gt: ">", gte: "≥" };
 
         function CompanyCard({ c, isRed }: { c: typeof latestRag.companies[0]; isRed: boolean }) {
           return (
@@ -117,27 +117,20 @@ export default async function DashboardPage({
               <div className="flex items-start justify-between gap-2 mb-2.5">
                 <div className="flex items-start gap-2 min-w-0">
                   <AlertTriangle className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isRed ? "text-red-500" : "text-amber-500"}`} />
-                  <p className="font-medium text-sm truncate">{c.companyName}</p>
+                  <Link href={`/analytics?company=${c.companyId}`} className="font-medium text-sm truncate hover:text-blue-600">{c.companyName}</Link>
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0">{c.periodLabel}</span>
               </div>
               <div className="space-y-2.5 pl-5">
                 {c.violations.map((v) => (
                   <div key={v.kpiKey}>
-                    <div className="flex items-baseline justify-between gap-3 mb-1">
+                    <div className="flex items-baseline justify-between gap-3">
                       <span className="text-xs font-medium">{v.kpiLabel}</span>
                       <span className="text-xs font-semibold shrink-0">{fmtKpiValue(v.actual, v.unit)}</span>
                     </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                      {v.allRules.map((r, i) => (
-                        <span key={i} className="text-[11px] text-muted-foreground">
-                          <span className={severityColor[r.severity]}>{severityLabel[r.severity]}</span>
-                          {" if "}
-                          <span className="font-medium">{opLabel[r.ruleType]} {fmtKpiValue(r.thresholdValue, v.unit)}</span>
-                          {r.isCompanyOverride && <span className="ml-1 opacity-60">(override)</span>}
-                        </span>
-                      ))}
-                    </div>
+                    <p className={`text-[11px] mt-0.5 ${v.ragStatus === "red" ? "text-red-600" : "text-amber-600"}`}>
+                      {v.ragStatus === "red" ? "Off Track" : "At Risk"}: {v.variancePct >= 0 ? "+" : ""}{v.variancePct.toFixed(1)}% vs plan
+                    </p>
                   </div>
                 ))}
               </div>

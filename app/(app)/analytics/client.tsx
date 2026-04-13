@@ -1263,11 +1263,6 @@ export function AnalyticsClient({
                   Clear ×
                 </button>
               )}
-              {selectedPeriodYM && (
-                <span className="text-xs text-muted-foreground">
-                  Showing {format(new Date(selectedPeriodYM + "-01T12:00:00"), "MMMM yyyy")}
-                </span>
-              )}
             </div>
 
             {/* Key Metrics */}

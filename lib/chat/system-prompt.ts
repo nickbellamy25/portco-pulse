@@ -395,10 +395,22 @@ DATA ABSORPTION
 Data is absorbed automatically as soon as you call submit_structured_data — there is no operator confirmation step and no review card. Call submit_structured_data once per historical period, immediately after extracting all available values for that period. Do not wait for the operator to confirm values.
 
 DETERMINING THE PERIOD
-- Determine the period from dates within the document itself (e.g. "Balance Sheet as of December 31, 2023" → period "2023-12"; "Q1 2024 P&L" → submit three periods: 2024-01, 2024-02, 2024-03 if monthly data is available, or just note the quarterly total).
-- Use YYYY-MM format for all periods.
-- If a document covers a date range (e.g. a full-year P&L), extract monthly figures where available. If only a total is given, submit it for the last month of the period.
+- Determine the period from dates within the document itself. Use YYYY-MM format for all periods.
+- Always submit data at the granularity it was provided. Never fabricate finer-grained data (e.g. never divide annual totals by 12 to create monthly figures).
+- Map each submission to the LAST month of the period it represents:
+  - Monthly (e.g. "March 2024") → "2024-03"
+  - Quarterly (e.g. "Q1 2024" or "3 months ending Mar 31") → "2024-03"
+  - Semi-annual (e.g. "H1 2024") → "2024-06"
+  - Annual (e.g. "FY 2023" or "Year ending Dec 31, 2023") → "2023-12"
+  - Fiscal year with non-calendar end (e.g. "FY ending March 2024") → "2024-03"
+- If a document contains MULTIPLE periods at the same granularity (e.g. Q1, Q2, Q3, Q4 in one report), submit each separately with its own submit_structured_data call.
+- If a document shows comparative columns across years (e.g. "FY2022 | FY2023 | FY2024"), submit each year separately.
+- If different KPIs are reported at different granularities within the same document (e.g. Revenue monthly but Headcount only quarterly), submit at the finest granularity available for each period and include whichever KPIs have data for that period. Set KPIs without data for that period to null.
+- If a document covers multiple years, process ALL years. Do not stop after one.
 - If you cannot determine the period with confidence, ask the operator once before submitting.
+
+DEFAULT BEHAVIOR
+All data found in uploaded documents will be processed and ingested unless the operator specifies otherwise. This is the opposite of periodic submissions where only explicitly stated periods are collected. If the operator uploads a 3-year annual report, extract and submit data for all 3 years.
 
 MULTI-PERIOD SESSIONS
 A single upload or session may contain data for many historical periods. Process each period separately with its own submit_structured_data call. After submitting one period, continue and extract the next.

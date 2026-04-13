@@ -403,14 +403,22 @@ export type CompanyPlanSummary = {
     ytdPlan: number | null;
     ytdVariancePct: number | null;
     rag: "green" | "amber" | "red" | null;
+    thruMonth: number | null;
+  } | null;
+  grossMargin: {
+    ytdActual: number | null;
+    ytdPlan: number | null;
+    ytdVariancePct: number | null;
+    rag: "green" | "amber" | "red" | null;
+    thruMonth: number | null;
   } | null;
   ebitda: {
     ytdActual: number | null;
     ytdPlan: number | null;
     ytdVariancePct: number | null;
     rag: "green" | "amber" | "red" | null;
+    thruMonth: number | null;
   } | null;
-  overallRag: "green" | "amber" | "red" | null;
 };
 
 export type PortfolioPlanSummary = {
@@ -436,10 +444,13 @@ export function getPortfolioPlanSummary(firmId: string, companyIds: string[]): P
   const revenueDef = db.select().from(schema.kpiDefinitions)
     .where(and(eq(schema.kpiDefinitions.firmId, firmId), eq(schema.kpiDefinitions.key, "revenue")))
     .get() ?? null;
+  const grossMarginDef = db.select().from(schema.kpiDefinitions)
+    .where(and(eq(schema.kpiDefinitions.firmId, firmId), eq(schema.kpiDefinitions.key, "gross_margin")))
+    .get() ?? null;
   const ebitdaDef = db.select().from(schema.kpiDefinitions)
     .where(and(eq(schema.kpiDefinitions.firmId, firmId), eq(schema.kpiDefinitions.key, "ebitda")))
     .get() ?? null;
-  if (!revenueDef && !ebitdaDef) return empty;
+  if (!revenueDef && !grossMarginDef && !ebitdaDef) return empty;
 
   // Latest submitted plan per company for this fiscal year
   const allPlans = db.select().from(schema.kpiPlans)
@@ -486,7 +497,7 @@ export function getPortfolioPlanSummary(firmId: string, companyIds: string[]): P
         .all()
     : [];
 
-  const kpiDefIds = [revenueDef?.id, ebitdaDef?.id].filter(Boolean) as string[];
+  const kpiDefIds = [revenueDef?.id, grossMarginDef?.id, ebitdaDef?.id].filter(Boolean) as string[];
   const subIds = submissions.map((s) => s.id);
   const kpiVals = subIds.length && kpiDefIds.length
     ? db.select().from(schema.kpiValues)
@@ -515,19 +526,22 @@ export function getPortfolioPlanSummary(firmId: string, companyIds: string[]): P
     companyId: string,
     plan: schema.KpiPlan | undefined,
     def: schema.KpiDefinition | null,
-    thruMonth: number
+    thruMonth: number,
+    isPercent = false
   ): CompanyPlanSummary["revenue"] {
     if (!def) return null;
     const byMonth = actuals.get(companyId)?.get(def.id);
     if (!byMonth) return null;
 
     let ytdActual = 0;
-    let found = false;
+    let count = 0;
+    let kpiLatestMonth = 0;
     for (let m = 1; m <= thruMonth; m++) {
       const v = byMonth.get(m);
-      if (v !== undefined) { ytdActual += v; found = true; }
+      if (v !== undefined) { ytdActual += v; count++; kpiLatestMonth = m; }
     }
-    if (!found) return null;
+    if (!count) return null;
+    if (isPercent) ytdActual = ytdActual / count;
 
     let ytdPlan: number | null = null;
     if (plan) {
@@ -535,14 +549,14 @@ export function getPortfolioPlanSummary(firmId: string, companyIds: string[]): P
       if (byKpi) {
         if (plan.granularity === "annual") {
           const annual = byKpi.get(null) ?? null;
-          ytdPlan = annual !== null ? annual * (thruMonth / 12) : null;
+          ytdPlan = annual !== null ? (isPercent ? annual : annual * (thruMonth / 12)) : null;
         } else {
-          let s = 0; let pf = false;
+          let s = 0; let pc = 0;
           for (let m = 1; m <= thruMonth; m++) {
             const pv = byKpi.get(m) ?? null;
-            if (pv !== null) { s += pv; pf = true; }
+            if (pv !== null) { s += pv; pc++; }
           }
-          ytdPlan = pf ? s : null;
+          ytdPlan = pc ? (isPercent ? s / pc : s) : null;
         }
       }
     }
@@ -562,7 +576,7 @@ export function getPortfolioPlanSummary(firmId: string, companyIds: string[]): P
           )
         : null;
 
-    return { ytdActual, ytdPlan, ytdVariancePct, rag };
+    return { ytdActual, ytdPlan, ytdVariancePct, rag, thruMonth: kpiLatestMonth || null };
   }
 
   const companies = db.select().from(schema.companies)
@@ -585,27 +599,29 @@ export function getPortfolioPlanSummary(firmId: string, companyIds: string[]): P
     }
 
     if (latestMonth === 0) {
-      summaries.push({ companyId: company.id, companyName: company.name, hasPlan, latestMonth: null, revenue: null, ebitda: null, overallRag: null });
+      summaries.push({ companyId: company.id, companyName: company.name, hasPlan, latestMonth: null, revenue: null, grossMargin: null, ebitda: null });
       continue;
     }
 
     const revenue = kpiYtd(company.id, plan, revenueDef, latestMonth);
+    const grossMargin = kpiYtd(company.id, plan, grossMarginDef, latestMonth, true);
     const ebitda = kpiYtd(company.id, plan, ebitdaDef, latestMonth);
-    const rags = [revenue?.rag, ebitda?.rag].filter(Boolean) as ("green" | "amber" | "red")[];
+    const rags = [revenue?.rag, grossMargin?.rag, ebitda?.rag].filter(Boolean) as ("green" | "amber" | "red")[];
     const overallRag = rags.includes("red") ? "red" : rags.includes("amber") ? "amber" : rags.length > 0 ? "green" : null;
 
-    summaries.push({ companyId: company.id, companyName: company.name, hasPlan, latestMonth, revenue, ebitda, overallRag });
+    summaries.push({ companyId: company.id, companyName: company.name, hasPlan, latestMonth, revenue, grossMargin, ebitda });
   }
 
   const ragDistribution = { green: 0, amber: 0, red: 0, noPlan: 0 };
   let onPlanCount = 0;
   let totalWithPlan = 0;
   for (const c of summaries) {
-    if (!c.hasPlan || c.overallRag === null) { ragDistribution.noPlan++; continue; }
+    const rags = [c.revenue?.rag, c.grossMargin?.rag, c.ebitda?.rag].filter(Boolean) as string[];
+    if (!c.hasPlan || !rags.length) { ragDistribution.noPlan++; continue; }
     totalWithPlan++;
-    if (c.overallRag === "green") { ragDistribution.green++; onPlanCount++; }
-    else if (c.overallRag === "amber") ragDistribution.amber++;
-    else ragDistribution.red++;
+    if (rags.includes("red")) ragDistribution.red++;
+    else if (rags.includes("amber")) ragDistribution.amber++;
+    else { ragDistribution.green++; onPlanCount++; }
   }
 
   return { fiscalYear, companies: summaries, ragDistribution, onPlanCount, totalWithPlan };
@@ -617,14 +633,10 @@ export type LatestSubmissionKpiViolation = {
   kpiLabel: string;
   kpiKey: string;
   actual: number;
+  plan: number;
   unit: string | null;
-  severity: "high" | "medium"; // worst severity violated
-  allRules: Array<{
-    ruleType: string;
-    thresholdValue: number;
-    severity: "low" | "medium" | "high";
-    isCompanyOverride: boolean;
-  }>;
+  variancePct: number;
+  ragStatus: "amber" | "red";
 };
 
 export type LatestSubmissionCompanyRag = {
@@ -644,11 +656,11 @@ export type LatestSubmissionRagSummary = {
 
 /**
  * For each company, finds their most recent submitted period and evaluates
- * active threshold rules against those KPI values.
- * Returns both summary counts and per-company violation detail.
+ * RAG status (% variance from plan) for each KPI.
+ * Returns summary counts and per-company violation detail.
  */
 export function getLatestSubmissionRagCount(firmId: string, companyIds: string[]): LatestSubmissionRagSummary {
-  const empty = { offTrackCount: 0, atRiskCount: 0, total: 0, companies: [] };
+  const empty: LatestSubmissionRagSummary = { offTrackCount: 0, atRiskCount: 0, total: 0, companies: [] };
   if (!companyIds.length) return empty;
 
   // All submitted submissions with period info
@@ -679,18 +691,21 @@ export function getLatestSubmissionRagCount(firmId: string, companyIds: string[]
   const total = latestSubByCompany.size;
   if (!total) return empty;
 
-  // Threshold rules (firm-wide and company-specific)
-  const thresholdRows = db.select().from(schema.thresholdRules)
-    .where(and(eq(schema.thresholdRules.firmId, firmId), eq(schema.thresholdRules.active, true)))
-    .all();
-
-  if (!thresholdRows.length) return { offTrackCount: 0, atRiskCount: 0, total, companies: [] };
-
-  // KPI definitions for labels/units
+  // Active KPI definitions (numeric types only)
   const kpiDefs = db.select().from(schema.kpiDefinitions)
-    .where(eq(schema.kpiDefinitions.firmId, firmId))
-    .all();
+    .where(and(eq(schema.kpiDefinitions.firmId, firmId), eq(schema.kpiDefinitions.active, true)))
+    .all()
+    .filter((d) => ["currency", "percent", "integer"].includes(d.valueType));
+  if (!kpiDefs.length) return { ...empty, total };
+
   const kpiDefById = new Map(kpiDefs.map((k) => [k.id, k]));
+
+  // Company name lookup
+  const companyRows = db.select({ id: schema.companies.id, name: schema.companies.name })
+    .from(schema.companies)
+    .where(inArray(schema.companies.id, companyIds))
+    .all();
+  const companyNameById = new Map(companyRows.map((c) => [c.id, c.name]));
 
   // KPI values for latest submissions
   const latestSubmissionIds = [...latestSubByCompany.values()].map((v) => v.submissionId);
@@ -705,73 +720,116 @@ export function getLatestSubmissionRagCount(firmId: string, companyIds: string[]
     kvIdx.get(kv.submissionId)!.set(kv.kpiDefinitionId, kv.actualNumber ?? null);
   }
 
-  // Company name lookup
-  const companyRows = db.select({ id: schema.companies.id, name: schema.companies.name })
-    .from(schema.companies)
-    .where(inArray(schema.companies.id, companyIds))
-    .all();
-  const companyNameById = new Map(companyRows.map((c) => [c.id, c.name]));
+  // --- Plans: find latest submitted plan per company ---
+  // Collect fiscal years from latest submissions
+  const companyFiscalYears = new Map<string, number>();
+  for (const [companyId, { periodStart }] of latestSubByCompany) {
+    companyFiscalYears.set(companyId, parseInt(periodStart.slice(0, 4), 10));
+  }
+  const fiscalYears = [...new Set(companyFiscalYears.values())];
 
-  // Index threshold rules: kpiDefId → rules[]
-  const rulesByKpiDef = new Map<string, typeof thresholdRows>();
-  for (const rule of thresholdRows) {
-    if (!rulesByKpiDef.has(rule.kpiDefinitionId)) rulesByKpiDef.set(rule.kpiDefinitionId, []);
-    rulesByKpiDef.get(rule.kpiDefinitionId)!.push(rule);
+  const allPlans = db.select().from(schema.kpiPlans)
+    .where(and(
+      inArray(schema.kpiPlans.companyId, [...latestSubByCompany.keys()]),
+      inArray(schema.kpiPlans.fiscalYear, fiscalYears)
+    ))
+    .all()
+    .filter((p) => p.submittedAt !== null);
+
+  // Latest plan per company (for matching fiscal year)
+  const latestPlanByCompany = new Map<string, typeof allPlans[0]>();
+  for (const plan of allPlans.sort((a, b) => a.version - b.version)) {
+    const fy = companyFiscalYears.get(plan.companyId);
+    if (plan.fiscalYear === fy) {
+      latestPlanByCompany.set(plan.companyId, plan);
+    }
   }
 
+  // Plan values indexed: planId → kpiDefId → periodMonth → value
+  const planIds = [...latestPlanByCompany.values()].map((p) => p.id);
+  const allPlanVals = planIds.length
+    ? db.select().from(schema.kpiPlanValues).where(inArray(schema.kpiPlanValues.planId, planIds)).all()
+    : [];
+  const planValIdx = new Map<string, Map<string, Map<number | null, number | null>>>();
+  for (const pv of allPlanVals) {
+    if (!planValIdx.has(pv.planId)) planValIdx.set(pv.planId, new Map());
+    if (!planValIdx.get(pv.planId)!.has(pv.kpiDefinitionId))
+      planValIdx.get(pv.planId)!.set(pv.kpiDefinitionId, new Map());
+    planValIdx.get(pv.planId)!.get(pv.kpiDefinitionId)!.set(pv.periodMonth ?? null, pv.value ?? null);
+  }
+
+  // RAG overrides: companyId → kpiDefId → override
+  const ragOverrideRows = db.select().from(schema.kpiRagOverrides)
+    .where(and(
+      eq(schema.kpiRagOverrides.firmId, firmId),
+      inArray(schema.kpiRagOverrides.companyId, [...latestSubByCompany.keys()])
+    ))
+    .all();
+  const ragOverrideIdx = new Map<string, Map<string, typeof ragOverrideRows[0]>>();
+  for (const ro of ragOverrideRows) {
+    if (!ragOverrideIdx.has(ro.companyId)) ragOverrideIdx.set(ro.companyId, new Map());
+    ragOverrideIdx.get(ro.companyId)!.set(ro.kpiDefinitionId, ro);
+  }
+
+  // --- Evaluate each company ---
   let offTrackCount = 0;
   let atRiskCount = 0;
   const companies: LatestSubmissionCompanyRag[] = [];
 
   for (const [companyId, { submissionId, periodStart }] of latestSubByCompany) {
+    const plan = latestPlanByCompany.get(companyId);
+    if (!plan) continue; // Skip companies without a plan
+
+    const month = parseInt(periodStart.slice(5, 7), 10);
     const kvMap = kvIdx.get(submissionId) ?? new Map();
+    const companyRagOverrides = ragOverrideIdx.get(companyId);
     let worstSeverity: "high" | "medium" | null = null;
     const violations: LatestSubmissionKpiViolation[] = [];
 
-    for (const [kpiDefId, rules] of rulesByKpiDef) {
-      const applicableRules = rules.filter((r) => r.companyId === null || r.companyId === companyId);
-      const actual = kvMap.get(kpiDefId);
+    for (const def of kpiDefs) {
+      if (def.companyId !== null && def.companyId !== companyId) continue;
+      const actual = kvMap.get(def.id);
       if (actual === null || actual === undefined) continue;
 
-      let kpiWorstSeverity: "high" | "medium" | null = null;
-      for (const rule of applicableRules) {
-        let violated = false;
-        if (rule.ruleType === "lt" && actual < rule.thresholdValue) violated = true;
-        if (rule.ruleType === "lte" && actual <= rule.thresholdValue) violated = true;
-        if (rule.ruleType === "gt" && actual > rule.thresholdValue) violated = true;
-        if (rule.ruleType === "gte" && actual >= rule.thresholdValue) violated = true;
+      // Resolve plan value for this month
+      const byKpi = planValIdx.get(plan.id)?.get(def.id);
+      if (!byKpi) continue;
 
-        if (violated) {
-          if (rule.severity === "high") kpiWorstSeverity = "high";
-          else if (rule.severity === "medium" && kpiWorstSeverity !== "high") kpiWorstSeverity = "medium";
+      let planVal: number | null = null;
+      if (plan.granularity === "annual") {
+        const annual = byKpi.get(null) ?? null;
+        if (annual !== null) {
+          planVal = def.valueType === "percent" ? annual : annual / 12;
         }
+      } else {
+        planVal = byKpi.get(month) ?? null;
       }
+      if (planVal === null || planVal === 0) continue;
 
-      if (kpiWorstSeverity) {
-        const def = kpiDefById.get(kpiDefId);
-        // All rules for this KPI (firm-wide + any company override), sorted by threshold value desc
-        const allRules = applicableRules
-          .map((r) => ({
-            ruleType: r.ruleType,
-            thresholdValue: r.thresholdValue,
-            severity: r.severity as "low" | "medium" | "high",
-            isCompanyOverride: r.companyId !== null,
-          }))
-          .sort((a, b) => b.thresholdValue - a.thresholdValue);
+      // Get RAG thresholds (company override > firm default)
+      const override = companyRagOverrides?.get(def.id);
+      const greenPct = override?.ragGreenPct ?? (def as any).ragGreenPct ?? 5;
+      const amberPct = override?.ragAmberPct ?? (def as any).ragAmberPct ?? 15;
+      const direction = (override?.ragDirection ?? (def as any).ragDirection ?? "higher_is_better") as "higher_is_better" | "lower_is_better" | "any_variance";
+
+      const rag = computeRagPct(actual, planVal, greenPct, amberPct, direction);
+      if (rag === "amber" || rag === "red") {
+        const variancePct = ((actual - planVal) / Math.abs(planVal)) * 100;
         violations.push({
-          kpiLabel: def?.label ?? kpiDefId,
-          kpiKey: def?.key ?? kpiDefId,
+          kpiLabel: def.label,
+          kpiKey: def.key,
           actual,
-          unit: def?.unit ?? null,
-          severity: kpiWorstSeverity,
-          allRules,
+          plan: planVal,
+          unit: def.unit ?? null,
+          variancePct,
+          ragStatus: rag,
         });
-        if (kpiWorstSeverity === "high") worstSeverity = "high";
-        else if (kpiWorstSeverity === "medium" && worstSeverity !== "high") worstSeverity = "medium";
+        if (rag === "red") worstSeverity = "high";
+        else if (worstSeverity !== "high") worstSeverity = "medium";
       }
     }
 
-    if (worstSeverity) {
+    if (worstSeverity && violations.length > 0) {
       const d = new Date(`${periodStart}T12:00:00`);
       companies.push({
         companyId,

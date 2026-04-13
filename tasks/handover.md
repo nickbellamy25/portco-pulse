@@ -774,6 +774,26 @@ Bug 2: "Messages disappear on navigation" — submission cards vanished when nav
 
 ---
 
+### Session 2026-04-13 (continued) — Seed resilience fix, document badge investigation
+
+**Seed EPERM fix (`scripts/seed.ts`):**
+- `createDemoFiles()` call wrapped in try/catch — EPERM errors (from Excel lock files `~$*.xlsx` or OneDrive sync) now skip demo file creation with a warning instead of failing the entire seed
+- Root cause: Excel creates `~$` lock files when .xlsx files are opened; OneDrive can persist these even after Excel closes
+- Demo files (Apex txt, Brighton xlsx, Culinary pdf, Pinnacle xlsx) are non-critical for DB seeding — all KPI data and company config seeds independently
+
+**Document badge investigation (no code changes needed):**
+- Investigated why Culinary Concepts IS badge showed gray after uploading income statement PDF
+- Root cause: Culinary has `requiredDocs: ""` in seed — no required documents configured, so ALL doc badges correctly render gray (not required)
+- The uploaded PDF WAS correctly processed — KPIs were extracted, and the file would be recorded in `financial_documents` via the `uploadedFiles` pipeline in `handleConfirm`
+- Confirmed both recording pipelines work correctly: (1) `pendingDocRecords` from Claude's `record_document` tool, (2) `uploadedFiles` from session uploads with `detectedDocumentType`
+- The `onToggleDoc` badge toggle is intentionally cosmetic — it changes badge color but does NOT affect what gets recorded in DB. This is correct behavior.
+
+**Reverted changes:**
+- Reverted `ConfirmationSummary.tsx` change that made detected-but-not-required doc badges clickable/green — original behavior (gray for not-required) was correct
+- Reverted `ChatInterface.tsx` change that filtered `uploadedFiles`/`pendingDocRecords` against `detectedDocs` state — the existing pipeline handles recording correctly without filtering
+
+---
+
 ## What's next — Phase 3 remaining
 
 **Phase 3 remaining:**

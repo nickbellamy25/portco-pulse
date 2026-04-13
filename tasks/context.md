@@ -544,4 +544,14 @@ Use urlCompanyName (looked up from companyList via companyIdFromUrl) for context
 
 [2026-04-13] | Context card period input was pre-filled with current period | Initialize `contextPeriods` state as empty string `""`, not `contextPeriod ?? ""`. The `contextPeriod` prop is only for placeholder hint text.
 
+---
+
+## Demo Files / Seed
+
+[2026-04-13] | `pnpm db:reset` fails with EPERM on `uploads/demo` when Excel lock files (`~$*.xlsx`) exist | Excel creates `~$` lock files when .xlsx files are opened. These persist if Excel crashes or OneDrive syncs them. `rmSync` can't delete locked files. Fix: seed.ts wraps `createDemoFiles()` in try/catch — EPERM skips demo file creation with a warning instead of failing the entire seed. The real fix is closing Excel before running db:reset.
+
+[2026-04-13] | Culinary Concepts has `requiredDocs: ""` in seed — no documents are required for submission | This is intentional. Culinary was recently onboarded and hasn't had required docs configured yet. Document badges correctly show all gray (not required). If IS is uploaded, it still gets recorded via the `uploadedFiles` pipeline in `handleConfirm` — the auto-detection from `detectedDocumentType` in the upload result flows through to `writePeriodicSubmission`. The UI badges showing gray is correct behavior, not a bug.
+
+[2026-04-13] | Investigated whether doc badge toggle state (detectedDocs) was disconnected from API submission | Analysis confirmed the two pipelines (pendingDocRecords from Claude's record_document tool + uploadedFiles from session uploads) both work correctly. The toggle via `onToggleDoc` is cosmetic only — it changes badge color but does NOT affect what gets recorded. This is acceptable because: (1) the badge row is informational, showing what the system detected, (2) actual recording is handled by the upload pipeline which has the real file data. Do NOT add filtering of uploadedFiles against detectedDocs — it could cause legitimate uploads to be dropped if badge state gets out of sync.
+
 [2026-04-13] | Two parallel onboarding handlers must stay in sync | `handleChatRequest` (operator, token-based) and `handlePulseChatRequest` (firm, session-based) both have onboarding agentic loops. Changes to onboarding logic must be applied to BOTH handlers.

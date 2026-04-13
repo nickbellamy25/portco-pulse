@@ -1705,8 +1705,16 @@ async function seed() {
   }
   console.log("Created independent operator: TechVault Inc.");
 
-  await createDemoFiles(path.join(process.cwd(), "uploads", "demo"));
-  console.log("Created demo files in uploads/demo/");
+  try {
+    await createDemoFiles(path.join(process.cwd(), "uploads", "demo"));
+    console.log("Created demo files in uploads/demo/");
+  } catch (e: any) {
+    if (e?.code === 'EPERM') {
+      console.log("⚠️  Skipped demo files (uploads/demo locked by another process — not critical)");
+    } else {
+      throw e;
+    }
+  }
 
   console.log("\n✅ Seed complete!");
   console.log("\n📋 Login credentials:");
